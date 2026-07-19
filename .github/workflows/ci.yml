@@ -91,7 +91,7 @@ jobs:
         run: pip install --quiet yamllint==1.35.1
 
       - name: Run yamllint
-        run: yamllint .
+        run: yamllint -c .yamllint.yml .
 
   # ---------------------------------------------------------------------------
   # TypeScript typecheck (strict) - reports as 'build' context
