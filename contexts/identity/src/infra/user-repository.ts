@@ -5,7 +5,7 @@
 // interface, not the concrete implementation).
 // =============================================================================
 
-import { Kysely } from 'kysely';
+import type { Kysely } from 'kysely';
 import type { Database } from './database.js';
 import { type CreateUserInput, type User } from '../domain/user.js';
 

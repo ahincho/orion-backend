@@ -2,7 +2,7 @@
 // Home repository
 // =============================================================================
 
-import { Kysely } from 'kysely';
+import type { Kysely } from 'kysely';
 import type { Database } from './database.js';
 import { type Home, type CountryCode } from '../domain/home.js';
 
