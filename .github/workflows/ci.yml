@@ -1,8 +1,18 @@
 # =============================================================================
 # CI - Lint, typecheck, and unit tests
 # =============================================================================
-# Triggered on PRs to main. Calls the reusable workflow from
-# spark-match-01-devops (CI - Lint & Security).
+# Triggered on PRs and pushes to main.
+#
+# Lint checks delegate to atomic reusables in spark-match-01-devops:
+#   - actionlint, gitleaks, yamllint, eslint run as 4 parallel jobs.
+#   - the ruleset's required 'lint' check is satisfied by an aggregate job
+#     that depends on the 4 (preserves the [lint, build, test] gate without
+#     forcing a ruleset update).
+#
+# Pin strategy: reference spark-match-01-devops@dev while the recipes are
+# maturing on `dev`. After validate-in-orion, the recipes get promoted to
+# `main` and the pin moves to @main for prod safety (per VERSIONING.md
+# pin-by-env rule).
 # =============================================================================
 
 name: CI - Lint & Test
@@ -62,55 +72,68 @@ jobs:
         run: npm ci
 
   # ---------------------------------------------------------------------------
-  # Lint & Security - actionlint + gitleaks + yamllint
-  # Inline until spark-match-01-devops reusable exposes workflow_call.
-  # Reports as the 'lint' status context so the main ruleset can require it.
+  # Lint & Security - 4 atomic reusables from spark-match-01-devops
+  # Each runs against this repo's code with environment-name=ci (informational
+  # only; the recipes don't gate on the GH Environment for these checks).
+  # ---------------------------------------------------------------------------
+  actionlint:
+    name: actionlint
+    uses: spark-match/spark-match-01-devops/.github/workflows/actionlint.yml@dev
+    with:
+      environment-name: ci
+
+  gitleaks:
+    name: gitleaks
+    uses: spark-match/spark-match-01-devops/.github/workflows/gitleaks.yml@dev
+    with:
+      environment-name: ci
+
+  yamllint:
+    name: yamllint
+    uses: spark-match/spark-match-01-devops/.github/workflows/yamllint.yml@dev
+    with:
+      environment-name: ci
+
+  eslint:
+    name: eslint
+    uses: spark-match/spark-match-01-devops/.github/workflows/eslint.yml@dev
+    with:
+      environment-name: ci
+      eslint-version: 10
+
+  # ---------------------------------------------------------------------------
+  # Aggregate 'lint' job - satisfies ruleset 19160658's required [lint, build,
+  # test] gate without forcing a ruleset update. The job itself does nothing
+  # except report whether all 4 atomic checks passed.
   # ---------------------------------------------------------------------------
   lint:
     name: lint
+    needs: [actionlint, gitleaks, yamllint, eslint]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    if: ${{ always() }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js 24
-        uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-
-      - name: Cache npm dependencies
-        uses: actions/cache@v6
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node24-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node24-
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Download actionlint binary
-        id: get_actionlint
-        run: bash <(curl --fail --silent --show-error --location https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash)
-        shell: bash
-
-      - name: Run actionlint
-        run: ${{ steps.get_actionlint.outputs.executable }} -color
-
-      - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install yamllint
-        run: pip install --quiet yamllint==1.35.1
-
-      - name: Run yamllint
-        run: yamllint -c .yamllint.yml .
-
-      - name: Run eslint
-        run: npm run lint
+      - name: Aggregate lint gate
+        run: |
+          RESULTS=(
+            "actionlint=${{ needs.actionlint.result }}"
+            "gitleaks=${{ needs.gitleaks.result }}"
+            "yamllint=${{ needs.yamllint.result }}"
+            "eslint=${{ needs.eslint.result }}"
+          )
+          FAILED=0
+          for pair in "${RESULTS[@]}"; do
+            name="${pair%%=*}"
+            result="${pair#*=}"
+            echo "  $name: $result"
+            if [ "$result" != "success" ]; then
+              FAILED=1
+            fi
+          done
+          if [ "$FAILED" = "1" ]; then
+            echo "::error::One or more atomic lint checks failed. See above."
+            exit 1
+          fi
+          echo "All atomic lint checks passed."
 
   # ---------------------------------------------------------------------------
   # TypeScript typecheck (strict) - reports as 'build' context
