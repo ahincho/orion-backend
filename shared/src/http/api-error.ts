@@ -43,7 +43,9 @@ export class ApiError extends Error {
   // ---------------------------------------------------------------------------
 
   static badRequest(message: string, details?: Record<string, unknown>): ApiError {
-    return new ApiError(400, message, { code: 'bad_request', details });
+    return details
+      ? new ApiError(400, message, { code: 'bad_request', details })
+      : new ApiError(400, message, { code: 'bad_request' });
   }
 
   static unauthorized(message = 'Unauthorized'): ApiError {
@@ -59,11 +61,15 @@ export class ApiError extends Error {
   }
 
   static conflict(message: string, details?: Record<string, unknown>): ApiError {
-    return new ApiError(409, message, { code: 'conflict', details });
+    return details
+      ? new ApiError(409, message, { code: 'conflict', details })
+      : new ApiError(409, message, { code: 'conflict' });
   }
 
   static unprocessable(message: string, details?: Record<string, unknown>): ApiError {
-    return new ApiError(422, message, { code: 'unprocessable_entity', details });
+    return details
+      ? new ApiError(422, message, { code: 'unprocessable_entity', details })
+      : new ApiError(422, message, { code: 'unprocessable_entity' });
   }
 
   static tooManyRequests(message = 'Too many requests'): ApiError {
@@ -71,7 +77,9 @@ export class ApiError extends Error {
   }
 
   static internal(message = 'Internal server error', cause?: unknown): ApiError {
-    return new ApiError(500, message, { code: 'internal', cause });
+    return cause === undefined
+      ? new ApiError(500, message, { code: 'internal' })
+      : new ApiError(500, message, { code: 'internal', cause });
   }
 
   static serviceUnavailable(message = 'Service unavailable'): ApiError {

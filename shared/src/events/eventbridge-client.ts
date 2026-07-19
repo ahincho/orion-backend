@@ -35,7 +35,8 @@ export interface EventPublisher {
 }
 
 export function createEventBridgeClient(config: EventBridgeConfig): EventPublisher {
-  const client = new EventBridgeClient({ region: config.region ?? process.env.AWS_REGION });
+  const region = config.region ?? process.env.AWS_REGION;
+  const client = region ? new EventBridgeClient({ region }) : new EventBridgeClient({});
 
   function toEntry(event: DomainEvent): PutEventsRequestEntry {
     return {
@@ -60,7 +61,9 @@ export function createEventBridgeClient(config: EventBridgeConfig): EventPublish
         // FailedEntryCount is the authoritative signal.
         if ((result.FailedEntryCount ?? 0) > 0) {
           const failed = (result.Entries ?? []).filter((e) => e.ErrorCode);
-          const codes = failed.map((f) => `${f.ErrorCode}: ${f.ErrorMessage ?? 'unknown'}`).join('; ');
+          const codes = failed
+            .map((f) => `${f.ErrorCode}: ${f.ErrorMessage ?? 'unknown'}`)
+            .join('; ');
           throw new Error(`Partial batch failure: ${codes || 'unknown'}`);
         }
 

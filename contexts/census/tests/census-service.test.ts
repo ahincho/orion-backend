@@ -1,11 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createCensusService } from './census-service.js';
-import type { HomeRepository } from '../infra/home-repository.js';
-import type { AssignmentRepository } from '../infra/assignment-repository.js';
+import { createCensusService } from '../src/service/census-service.js';
+import type { HomeRepository } from '../src/infra/home-repository.js';
+import type { AssignmentRepository } from '../src/infra/assignment-repository.js';
 import type { EventPublisher } from '@orion/shared/events';
-import { ApiError } from '@orion/shared/http';
-import type { Home } from '../domain/home.js';
-import type { Assignment } from '../domain/assignment.js';
+import type { Home } from '../src/domain/home.js';
+import type { Assignment } from '../src/domain/assignment.js';
 
 function makeHome(overrides: Partial<Home> = {}): Home {
   return {
@@ -27,10 +26,12 @@ function makeHome(overrides: Partial<Home> = {}): Home {
   };
 }
 
-function makeDeps(opts: {
-  home?: Home | null;
-  existingAssignment?: Assignment | null;
-} = {}) {
+function makeDeps(
+  opts: {
+    home?: Home | null;
+    existingAssignment?: Assignment | null;
+  } = {},
+) {
   const homeRepository: HomeRepository = {
     findById: vi.fn().mockResolvedValue(opts.home ?? null),
     findByExternalId: vi.fn().mockResolvedValue(opts.home ?? null),

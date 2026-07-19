@@ -6,9 +6,25 @@
 // =============================================================================
 
 import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
-import { promisify } from 'node:util';
+import type { ScryptOptions } from 'node:crypto';
 
-const scryptAsync = promisify(scrypt);
+type ScryptAsync = (
+  password: string | Buffer,
+  salt: string | Buffer,
+  keylen: number,
+  options?: ScryptOptions,
+) => Promise<Buffer>;
+
+const SCRYPT_MAXMEM = 256 * 1024 * 1024;
+
+const scryptAsync: ScryptAsync = (password, salt, keylen, options) =>
+  new Promise((resolve, reject) => {
+    const opts = options ? { ...options, maxmem: SCRYPT_MAXMEM } : { maxmem: SCRYPT_MAXMEM };
+    scrypt(password, salt, keylen, opts, (err, derivedKey) => {
+      if (err) reject(err);
+      else resolve(derivedKey);
+    });
+  });
 
 const N = 16384;
 const R = 8;
@@ -21,7 +37,7 @@ export async function hashPassword(plain: string): Promise<string> {
     throw new Error('Password must be at least 8 characters');
   }
   const salt = randomBytes(SALT_LENGTH);
-  const hash = (await scryptAsync(plain, salt, KEY_LENGTH, { N, r: R, p: P })) as Buffer;
+  const hash = await scryptAsync(plain, salt, KEY_LENGTH, { N, r: R, p: P });
   return `scrypt$${N}$${R}$${P}$${salt.toString('base64url')}$${hash.toString('base64url')}`;
 }
 
@@ -36,6 +52,6 @@ export async function verifyPassword(plain: string, encoded: string): Promise<bo
 
   const salt = Buffer.from(saltB64!, 'base64url');
   const expected = Buffer.from(hashB64!, 'base64url');
-  const computed = (await scryptAsync(plain, salt, expected.length, { N: n, r, p })) as Buffer;
+  const computed = await scryptAsync(plain, salt, expected.length, { N: n, r, p });
   return computed.length === expected.length && timingSafeEqual(computed, expected);
 }

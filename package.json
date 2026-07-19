@@ -25,9 +25,9 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit -p tsconfig.base.json && tsc --noEmit",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit -p tsconfig.base.json",
+    "format": "prettier --write --ignore-path .gitignore '**/*.{ts,mts,cts,mjs,cjs,js,json,md,yml,yaml}'",
+    "format:check": "prettier --check --ignore-path .gitignore '**/*.{ts,mts,cts,mjs,cjs,js,json,md,yml,yaml}'",
     "local:api": "sam local start-api --warm-containers EAGER"
   },
   "devDependencies": {

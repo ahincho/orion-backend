@@ -7,11 +7,12 @@ import { buildHandler } from '@orion/shared/templates';
 import { createLogger } from '@orion/shared/logger';
 import { buildContext } from '../composition.js';
 import { RegisterInputSchema, type RegisterInput } from '../schemas/register.schema.js';
+import type { PublicUser } from '../domain/user.js';
 
 const logger = createLogger('identity');
 const tracer = new Tracer({ serviceName: 'identity' });
 
-export const handler = buildHandler<RegisterInput, { user: ReturnType<typeof Object>; token: string }>({
+export const handler = buildHandler<RegisterInput, { user: PublicUser; token: string }>({
   inputSchema: RegisterInputSchema,
   logger,
   tracer,

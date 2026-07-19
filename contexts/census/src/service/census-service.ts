@@ -16,7 +16,7 @@ import { type AssignmentRepository } from '../infra/assignment-repository.js';
 export interface CensusService {
   listUnassignedWithInterest(limit: number): Promise<PublicHome[]>;
   listAssignedTo(userId: string, fromDate: string, toDate: string): Promise<PublicHome[]>;
-  assignHome(input: AssignHomeInput): Promise<Assignment>;
+  assignHome(input: AssignHomeInput & { assignedBy: string }): Promise<Assignment>;
   updateAssignmentStatus(assignmentId: string, status: AssignmentStatus): Promise<void>;
 }
 
@@ -36,21 +36,14 @@ export interface CensusServiceDeps {
 export function createCensusService(deps: CensusServiceDeps): CensusService {
   const { homeRepository, assignmentRepository, eventPublisher } = deps;
 
-  async function emitAssigned(
-    assignment: Assignment,
-    assignedBy: string,
-  ): Promise<void> {
-    const event = makeDomainEvent<CensusAssignedEvent>(
-      'orion.census',
-      'CensusAssigned',
-      {
-        assignmentId: assignment.id,
-        homeId: assignment.homeId,
-        assigneeId: assignment.assigneeId,
-        assignedBy,
-        scheduledDate: assignment.scheduledDate,
-      },
-    );
+  async function emitAssigned(assignment: Assignment, assignedBy: string): Promise<void> {
+    const event = makeDomainEvent<CensusAssignedEvent>('orion.census', 'CensusAssigned', {
+      assignmentId: assignment.id,
+      homeId: assignment.homeId,
+      assigneeId: assignment.assigneeId,
+      assignedBy,
+      scheduledDate: assignment.scheduledDate,
+    });
     await eventPublisher.publish(event);
   }
 
@@ -70,7 +63,10 @@ export function createCensusService(deps: CensusServiceDeps): CensusService {
       if (!home) throw ApiError.notFound('Home');
 
       // Idempotency: if there's already an assignment for this home on this date, return it.
-      const existing = await assignmentRepository.findByHomeAndDate(input.homeId, input.scheduledDate);
+      const existing = await assignmentRepository.findByHomeAndDate(
+        input.homeId,
+        input.scheduledDate,
+      );
       if (existing) return existing;
 
       const assignment = await assignmentRepository.create({
@@ -78,7 +74,7 @@ export function createCensusService(deps: CensusServiceDeps): CensusService {
         assigneeId: input.assigneeId,
         assignedBy: input.assignedBy,
         scheduledDate: input.scheduledDate,
-        notes: input.notes,
+        ...(input.notes ? { notes: input.notes } : {}),
       });
 
       await homeRepository.setAssignedTo(home.id, input.assigneeId);

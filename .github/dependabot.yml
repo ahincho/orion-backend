@@ -3,58 +3,58 @@ version: 2
 updates:
   # GitHub Actions: escanea workflows locales (los reusables no se escanean
   # porque viven en spark-match-01-devops).
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: 'github-actions'
+    directory: '/'
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "08:00"
+      interval: 'weekly'
+      day: 'monday'
+      time: '08:00'
     commit-message:
-      prefix: "ci(deps)"
-      include: "scope"
+      prefix: 'ci(deps)'
+      include: 'scope'
     labels:
-      - "dependencies"
+      - 'dependencies'
     groups:
       minor-and-patch:
         patterns:
-          - "*"
+          - '*'
         update-types:
-          - "minor"
-          - "patch"
+          - 'minor'
+          - 'patch'
     open-pull-requests-limit: 5
 
   # npm: workspaces (shared y cada contexts/*). El root hace el npm ci
   # del top-level; las actualizaciones a las deps por contexto van separadas.
-  - package-ecosystem: "npm"
+  - package-ecosystem: 'npm'
     directories:
-      - "/"
-      - "/shared"
-      - "/contexts/authorizer"
-      - "/contexts/identity"
-      - "/contexts/census"
+      - '/'
+      - '/shared'
+      - '/contexts/authorizer'
+      - '/contexts/identity'
+      - '/contexts/census'
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "08:00"
+      interval: 'weekly'
+      day: 'monday'
+      time: '08:00'
     commit-message:
-      prefix: "ci(deps)"
-      include: "scope"
+      prefix: 'ci(deps)'
+      include: 'scope'
     labels:
-      - "dependencies"
+      - 'dependencies'
     groups:
       minor-and-patch:
         patterns:
-          - "*"
+          - '*'
         update-types:
-          - "minor"
-          - "patch"
+          - 'minor'
+          - 'patch'
       aws-powertools-and-external-runtime:
         patterns:
-          - "@aws-lambda-powertools/*"
-          - "@middy/*"
-          - "kysely"
-          - "pg"
+          - '@aws-lambda-powertools/*'
+          - '@middy/*'
+          - 'kysely'
+          - 'pg'
         update-types:
-          - "minor"
-          - "patch"
+          - 'minor'
+          - 'patch'
     open-pull-requests-limit: 5

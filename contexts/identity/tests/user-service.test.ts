@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createUserService } from './user-service.js';
-import type { UserRepository } from '../infra/user-repository.js';
+import { createUserService, type JwtSigner } from '../src/service/user-service.js';
+import type { UserRepository } from '../src/infra/user-repository.js';
 import type { EventPublisher } from '@orion/shared/events';
-import type { JwtSigner } from './user-service.js';
 import { ApiError } from '@orion/shared/http';
-import type { User } from '../domain/user.js';
+import { verifyPassword } from '../src/password-hasher.js';
+import type { User } from '../src/domain/user.js';
 
 function makeUser(overrides: Partial<User> = {}): User {
   return {
@@ -20,22 +20,28 @@ function makeUser(overrides: Partial<User> = {}): User {
   };
 }
 
-function makeDeps(opts: {
-  existingUser?: User | null;
-  passwordValid?: boolean;
-} = {}) {
+function makeDeps(
+  opts: {
+    existingUser?: User | null;
+    passwordValid?: boolean;
+  } = {},
+) {
   const userRepository: UserRepository = {
     findByEmail: vi.fn().mockResolvedValue(opts.existingUser ?? null),
     findById: vi.fn().mockResolvedValue(opts.existingUser ?? null),
-    create: vi.fn().mockImplementation(async (input) => makeUser({
-      id: input.id,
-      email: input.email.toLowerCase(),
-      fullName: input.fullName,
-      role: input.role,
-      passwordHash: input.passwordHash,
-    })),
+    create: vi.fn().mockImplementation(async (input) =>
+      makeUser({
+        id: input.id,
+        email: input.email.toLowerCase(),
+        fullName: input.fullName,
+        role: input.role,
+        passwordHash: input.passwordHash,
+      }),
+    ),
     updatePassword: vi.fn().mockResolvedValue(undefined),
-    existsByEmail: vi.fn().mockResolvedValue(opts.existingUser !== null && opts.existingUser !== undefined),
+    existsByEmail: vi
+      .fn()
+      .mockResolvedValue(opts.existingUser !== null && opts.existingUser !== undefined),
   };
 
   const eventPublisher: EventPublisher = {
@@ -79,7 +85,12 @@ describe('userService.register', () => {
     const service = createUserService(deps);
 
     await expect(
-      service.register({ email: 'taken@example.com', fullName: 'X', password: 'password123', role: 'asesor' }),
+      service.register({
+        email: 'taken@example.com',
+        fullName: 'X',
+        password: 'password123',
+        role: 'asesor',
+      }),
     ).rejects.toThrow(ApiError);
   });
 
@@ -94,11 +105,7 @@ describe('userService.register', () => {
       role: 'supervisor',
     });
 
-    expect(deps.jwtSigner.sign).toHaveBeenCalledWith(
-      expect.any(String),
-      'b@c.com',
-      'supervisor',
-    );
+    expect(deps.jwtSigner.sign).toHaveBeenCalledWith(expect.any(String), 'b@c.com', 'supervisor');
   });
 });
 
@@ -107,8 +114,8 @@ describe('userService.authenticate', () => {
     const user = makeUser();
     const deps = makeDeps({ existingUser: user });
     // Make verifyPassword succeed by stubbing the password-hasher module
-    vi.mock('../password-hasher.js', async (importOriginal) => {
-      const actual = await importOriginal<typeof import('../password-hasher.js')>();
+    vi.mock('../src/password-hasher.js', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('../src/password-hasher.js')>();
       return {
         ...actual,
         verifyPassword: vi.fn().mockResolvedValue(true),
@@ -116,7 +123,7 @@ describe('userService.authenticate', () => {
     });
 
     // Re-import after mock
-    const { createUserService: createWithMock } = await import('./user-service.js');
+    const { createUserService: createWithMock } = await import('../src/service/user-service.js');
     const service = createWithMock(deps);
 
     const result = await service.authenticate('alice@example.com', 'password123');
@@ -131,9 +138,10 @@ describe('userService.authenticate', () => {
     const deps = makeDeps({ existingUser: null });
     const service = createUserService(deps);
 
-    await expect(
-      service.authenticate('unknown@example.com', 'password123'),
-    ).rejects.toMatchObject({ statusCode: 401, code: 'unauthorized' });
+    await expect(service.authenticate('unknown@example.com', 'password123')).rejects.toMatchObject({
+      statusCode: 401,
+      code: 'unauthorized',
+    });
   });
 });
 
@@ -142,6 +150,8 @@ describe('userService.changePassword', () => {
     const user = makeUser();
     const deps = makeDeps({ existingUser: user });
     const service = createUserService(deps);
+
+    vi.mocked(verifyPassword).mockResolvedValueOnce(true);
 
     await expect(
       service.changePassword('u-1', 'old-password', 'new-password-123'),
@@ -154,9 +164,11 @@ describe('userService.changePassword', () => {
     const deps = makeDeps({ existingUser: user });
     const service = createUserService(deps);
 
-    await expect(
-      service.changePassword('u-1', 'wrong', 'new-password-123'),
-    ).rejects.toMatchObject({ statusCode: 401 });
+    vi.mocked(verifyPassword).mockResolvedValueOnce(false);
+
+    await expect(service.changePassword('u-1', 'wrong', 'new-password-123')).rejects.toMatchObject({
+      statusCode: 401,
+    });
     expect(deps.userRepository.updatePassword).not.toHaveBeenCalled();
   });
 });

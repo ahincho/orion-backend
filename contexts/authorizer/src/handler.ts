@@ -11,15 +11,23 @@
 // =============================================================================
 
 import type {
-  APIGatewayAuthorizerResult,
-  APIGatewayAuthorizerWithContextResult,
   APIGatewayRequestAuthorizerEventV2,
+  APIGatewaySimpleAuthorizerResult,
+  APIGatewaySimpleAuthorizerWithContextResult,
 } from 'aws-lambda';
 import { buildContext } from './composition.js';
 
+interface AuthorizerContext extends Record<string, string> {
+  userId: string;
+  email: string;
+  role: string;
+}
+
 export const handler = async (
   event: APIGatewayRequestAuthorizerEventV2,
-): Promise<APIGatewayAuthorizerResult | APIGatewayAuthorizerWithContextResult> => {
+): Promise<
+  APIGatewaySimpleAuthorizerResult | APIGatewaySimpleAuthorizerWithContextResult<AuthorizerContext>
+> => {
   const authHeader =
     event.headers?.authorization ?? event.headers?.Authorization ?? event.headers?.AUTHORIZATION;
 

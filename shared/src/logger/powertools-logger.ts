@@ -9,19 +9,17 @@
 // Pair with the injectLambdaContext middleware in build-handler.
 // =============================================================================
 
-import { Logger, type LogLevel } from '@aws-lambda-powertools/logger';
+import { Logger } from '@aws-lambda-powertools/logger';
+import type { LogLevel } from '@aws-lambda-powertools/logger/types';
 
 export type ServiceName =
-  | 'authorizer'
-  | 'identity'
-  | 'census'
-  | 'networks'
-  | 'risk'
-  | 'postsale'
-  | 'shared';
+  'authorizer' | 'identity' | 'census' | 'networks' | 'risk' | 'postsale' | 'shared';
 
 export function createLogger(serviceName: ServiceName): Logger {
-  const logLevel = (process.env.LOG_LEVEL as LogLevel | undefined) ?? 'INFO';
+  const envLevel = process.env.LOG_LEVEL;
+  const validLevels: LogLevel[] = ['TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR', 'CRITICAL', 'SILENT'];
+  const normalized = envLevel ? envLevel.toUpperCase() : 'INFO';
+  const logLevel = validLevels.includes(normalized as LogLevel) ? (normalized as LogLevel) : 'INFO';
   const environment = process.env.ENVIRONMENT ?? 'dev';
 
   return new Logger({

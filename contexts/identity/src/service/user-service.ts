@@ -7,12 +7,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { ApiError } from '@orion/shared/http';
-import {
-  type CreateEventBridgeClient,
-  makeDomainEvent,
-  type EventPublisher,
-} from '@orion/shared/events';
-import { signJwt } from '@orion/shared/auth';
+import { makeDomainEvent, type EventPublisher } from '@orion/shared/events';
 import { type User, toPublicUser, type PublicUser, type CreateUserInput } from '../domain/user.js';
 import { type UserRegisteredEvent, type UserLoggedInEvent } from '../domain/events.js';
 import { type UserRepository } from '../infra/user-repository.js';
@@ -39,29 +34,21 @@ export function createUserService(deps: UserServiceDeps): UserService {
   const { userRepository, eventPublisher, jwtSigner } = deps;
 
   async function emitUserRegistered(user: User): Promise<void> {
-    const event = makeDomainEvent<UserRegisteredEvent>(
-      'orion.identity',
-      'UserRegistered',
-      {
-        userId: user.id,
-        email: user.email,
-        fullName: user.fullName,
-        role: user.role,
-      },
-    );
+    const event = makeDomainEvent<UserRegisteredEvent>('orion.identity', 'UserRegistered', {
+      userId: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+    });
     await eventPublisher.publish(event);
   }
 
   async function emitUserLoggedIn(user: User): Promise<void> {
-    const event = makeDomainEvent<UserLoggedInEvent>(
-      'orion.identity',
-      'UserLoggedIn',
-      {
-        userId: user.id,
-        email: user.email,
-        loginAt: new Date().toISOString(),
-      },
-    );
+    const event = makeDomainEvent<UserLoggedInEvent>('orion.identity', 'UserLoggedIn', {
+      userId: user.id,
+      email: user.email,
+      loginAt: new Date().toISOString(),
+    });
     await eventPublisher.publish(event);
   }
 
@@ -115,6 +102,3 @@ export function createUserService(deps: UserServiceDeps): UserService {
     },
   };
 }
-
-// Re-export for callers (avoid circular imports in tests).
-export type { CreateEventBridgeClient };

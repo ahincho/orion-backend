@@ -3,7 +3,8 @@
 // =============================================================================
 
 import { Tracer } from '@aws-lambda-powertools/tracer';
-import { buildHandler, type AuthContext } from '@orion/shared/templates';
+import { buildHandler } from '@orion/shared/templates';
+import { type AuthContext } from '@orion/shared/auth';
 import { createLogger } from '@orion/shared/logger';
 import { ApiError } from '@orion/shared/http';
 import { buildContext } from '../composition.js';

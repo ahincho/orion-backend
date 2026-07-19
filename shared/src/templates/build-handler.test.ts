@@ -9,13 +9,16 @@ const inputSchema = z.object({ name: z.string() });
 const logger = new Logger({ serviceName: 'test' });
 const tracer = new Tracer({ serviceName: 'test' });
 
-function makeEvent(body: object | null, authContext?: Record<string, string>): Parameters<ReturnType<typeof buildHandler>>[0] {
+function makeEvent(
+  body: object | null,
+  authContext?: Record<string, string>,
+): Parameters<ReturnType<typeof buildHandler>>[0] {
   return {
     version: '2.0',
     routeKey: 'POST /test',
     rawPath: '/test',
     rawQueryString: '',
-    headers: {},
+    headers: { 'content-type': 'application/json' },
     requestContext: {
       accountId: '123',
       apiId: 'abc',
@@ -52,9 +55,9 @@ describe('buildHandler', () => {
       enableCors: false,
     });
 
-    const result = await (wrapped as unknown as (e: unknown) => Promise<{ statusCode: number; body: string }>)(
-      makeEvent({ name: 'Alice' }),
-    );
+    const result = await (
+      wrapped as unknown as (e: unknown) => Promise<{ statusCode: number; body: string }>
+    )(makeEvent({ name: 'Alice' }));
 
     expect(result.statusCode).toBe(200);
     expect(handler).toHaveBeenCalledWith({ name: 'Alice' }, expect.anything(), undefined);
@@ -73,9 +76,9 @@ describe('buildHandler', () => {
       enableCors: false,
     });
 
-    const result = await (wrapped as unknown as (e: unknown) => Promise<{ statusCode: number; body: string }>)(
-      makeEvent({ name: 123 }),
-    );
+    const result = await (
+      wrapped as unknown as (e: unknown) => Promise<{ statusCode: number; body: string }>
+    )(makeEvent({ name: 123 }));
 
     expect(result.statusCode).toBe(400);
     const body = JSON.parse(result.body);
@@ -95,9 +98,9 @@ describe('buildHandler', () => {
       enableCors: false,
     });
 
-    const result = await (wrapped as unknown as (e: unknown) => Promise<{ statusCode: number; body: string }>)(
-      makeEvent({ name: 'Alice' }),
-    );
+    const result = await (
+      wrapped as unknown as (e: unknown) => Promise<{ statusCode: number; body: string }>
+    )(makeEvent({ name: 'Alice' }));
 
     expect(result.statusCode).toBe(401);
     expect(handler).not.toHaveBeenCalled();

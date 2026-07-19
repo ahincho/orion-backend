@@ -6,4 +6,4 @@ export const RegisterInputSchema = z.object({
   password: z.string().min(8).max(128),
   role: z.enum(['asesor', 'supervisor', 'distribuidor', 'admin']).default('asesor'),
 });
-export type RegisterInput = z.infer<typeof RegisterInputSchema>;
+export type RegisterInput = z.output<typeof RegisterInputSchema>;

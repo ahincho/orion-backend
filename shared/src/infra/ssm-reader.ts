@@ -8,11 +8,7 @@
 // SSM client directly in services.
 // =============================================================================
 
-import {
-  GetParametersCommand,
-  GetParameterCommand,
-  SSMClient,
-} from '@aws-sdk/client-ssm';
+import { GetParametersCommand, GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 
 const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -34,7 +30,8 @@ interface CacheEntry {
 }
 
 export function createSsmReader(config: SsmReaderConfig = {}): SsmReader {
-  const client = new SSMClient({ region: config.region ?? process.env.AWS_REGION });
+  const region = config.region ?? process.env.AWS_REGION;
+  const client = region ? new SSMClient({ region }) : new SSMClient({});
   const ttl = config.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
   const cache = new Map<string, CacheEntry>();
 
@@ -56,9 +53,7 @@ export function createSsmReader(config: SsmReaderConfig = {}): SsmReader {
     const cached = getCached(name);
     if (cached !== undefined) return cached;
 
-    const result = await client.send(
-      new GetParameterCommand({ Name: name }),
-    );
+    const result = await client.send(new GetParameterCommand({ Name: name }));
     const value = result.Parameter?.Value;
     if (value !== undefined) {
       setCached(name, value);

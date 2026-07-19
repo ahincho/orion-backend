@@ -12,7 +12,7 @@
 
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: ORION identity bounded context: users, sessions, login, register.
+Description: 'ORION identity bounded context: users, sessions, login, register.'
 
 Parameters:
   HttpApiId:
@@ -35,14 +35,14 @@ Globals:
     Architectures: [x86_64]
     Layers:
       - !ImportValue
-        Fn::Sub: "orion-node-shared-layer-arn-${Environment}"
+        Fn::Sub: 'orion-node-shared-layer-arn-${Environment}'
       - !ImportValue
-        Fn::Sub: "orion-node-runtime-layer-arn-${Environment}"
+        Fn::Sub: 'orion-node-runtime-layer-arn-${Environment}'
     Environment:
       Variables:
         ENVIRONMENT: !Ref Environment
         LOG_LEVEL: INFO
-        POWERTOOLS_SERVICE_NAME: !Sub "orion-identity-${Environment}"
+        POWERTOOLS_SERVICE_NAME: !Sub 'orion-identity-${Environment}'
         NODE_OPTIONS: --enable-source-maps
         DB_SECRET_ARN: '{{resolve:ssm:/orion/db/secret-arn}}'
         EVENT_BUS_ARN: '{{resolve:ssm:/orion/eventbridge/bus-arn}}'
@@ -71,7 +71,7 @@ Resources:
                   - ssm:GetParameter
                   - ssm:GetParameters
                 Resource:
-                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/orion/*"
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/orion/*'
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
@@ -87,7 +87,7 @@ Resources:
   IdentityRegisterFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub "orion-identity-register-${Environment}"
+      FunctionName: !Sub 'orion-identity-register-${Environment}'
       Handler: handlers/register.handler
       CodeUri: ./
       Role: !GetAtt IdentityFunctionRole.Arn
@@ -105,7 +105,7 @@ Resources:
   IdentityLoginFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub "orion-identity-login-${Environment}"
+      FunctionName: !Sub 'orion-identity-login-${Environment}'
       Handler: handlers/login.handler
       CodeUri: ./
       Role: !GetAtt IdentityFunctionRole.Arn
@@ -123,7 +123,7 @@ Resources:
   IdentityGetMeFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub "orion-identity-get-me-${Environment}"
+      FunctionName: !Sub 'orion-identity-get-me-${Environment}'
       Handler: handlers/get-me.handler
       CodeUri: ./
       Role: !GetAtt IdentityFunctionRole.Arn
@@ -142,7 +142,7 @@ Resources:
   IdentityChangePasswordFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub "orion-identity-change-password-${Environment}"
+      FunctionName: !Sub 'orion-identity-change-password-${Environment}'
       Handler: handlers/change-password.handler
       CodeUri: ./
       Role: !GetAtt IdentityFunctionRole.Arn
@@ -159,19 +159,19 @@ Outputs:
   IdentityRegisterFunctionName:
     Value: !Ref IdentityRegisterFunction
     Export:
-      Name: !Sub "orion-identity-register-name-${Environment}"
+      Name: !Sub 'orion-identity-register-name-${Environment}'
 
   IdentityLoginFunctionName:
     Value: !Ref IdentityLoginFunction
     Export:
-      Name: !Sub "orion-identity-login-name-${Environment}"
+      Name: !Sub 'orion-identity-login-name-${Environment}'
 
   IdentityGetMeFunctionName:
     Value: !Ref IdentityGetMeFunction
     Export:
-      Name: !Sub "orion-identity-get-me-name-${Environment}"
+      Name: !Sub 'orion-identity-get-me-name-${Environment}'
 
   IdentityChangePasswordFunctionName:
     Value: !Ref IdentityChangePasswordFunction
     Export:
-      Name: !Sub "orion-identity-change-password-name-${Environment}"
+      Name: !Sub 'orion-identity-change-password-name-${Environment}'

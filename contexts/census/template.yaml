@@ -10,7 +10,7 @@
 
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: ORION P1 bounded context: Asignacion de Censos.
+Description: 'ORION P1 bounded context: Asignacion de Censos.'
 
 Parameters:
   HttpApiId:
@@ -31,14 +31,14 @@ Globals:
     Architectures: [x86_64]
     Layers:
       - !ImportValue
-        Fn::Sub: "orion-node-shared-layer-arn-${Environment}"
+        Fn::Sub: 'orion-node-shared-layer-arn-${Environment}'
       - !ImportValue
-        Fn::Sub: "orion-node-runtime-layer-arn-${Environment}"
+        Fn::Sub: 'orion-node-runtime-layer-arn-${Environment}'
     Environment:
       Variables:
         ENVIRONMENT: !Ref Environment
         LOG_LEVEL: INFO
-        POWERTOOLS_SERVICE_NAME: !Sub "orion-census-${Environment}"
+        POWERTOOLS_SERVICE_NAME: !Sub 'orion-census-${Environment}'
         NODE_OPTIONS: --enable-source-maps
         DB_SECRET_ARN: '{{resolve:ssm:/orion/db/secret-arn}}'
         EVENT_BUS_ARN: '{{resolve:ssm:/orion/eventbridge/bus-arn}}'
@@ -65,7 +65,7 @@ Resources:
                 Action:
                   - ssm:GetParameter
                 Resource:
-                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/orion/*"
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/orion/*'
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
@@ -78,7 +78,7 @@ Resources:
   CensusListUnassignedFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub "orion-census-list-unassigned-${Environment}"
+      FunctionName: !Sub 'orion-census-list-unassigned-${Environment}'
       Handler: handlers/list-unassigned.handler
       CodeUri: ./
       Role: !GetAtt CensusFunctionRole.Arn
@@ -94,7 +94,7 @@ Resources:
   CensusAssignFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub "orion-census-assign-${Environment}"
+      FunctionName: !Sub 'orion-census-assign-${Environment}'
       Handler: handlers/assign.handler
       CodeUri: ./
       Role: !GetAtt CensusFunctionRole.Arn
@@ -111,9 +111,9 @@ Outputs:
   CensusListUnassignedFunctionName:
     Value: !Ref CensusListUnassignedFunction
     Export:
-      Name: !Sub "orion-census-list-unassigned-name-${Environment}"
+      Name: !Sub 'orion-census-list-unassigned-name-${Environment}'
 
   CensusAssignFunctionName:
     Value: !Ref CensusAssignFunction
     Export:
-      Name: !Sub "orion-census-assign-name-${Environment}"
+      Name: !Sub 'orion-census-assign-name-${Environment}'
