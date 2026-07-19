@@ -103,9 +103,10 @@ connections on cold paths.
 ## Lambda Authorizer (custom JWT)
 
 We do **not use Cognito**. Authentication is implemented in
-`contexts/identity/` (users table in PostgreSQL, `bcrypt`-hashed passwords,
-JWT signed with HS256). All protected routes are gated by a single
-**Lambda Authorizer** (`contexts/authorizer/`) that:
+`contexts/identity/` (users table in PostgreSQL, **scrypt**-hashed
+passwords with `N=16384, r=8, p=1`, JWT signed with HS256). All
+protected routes are gated by a single **Lambda Authorizer**
+(`contexts/authorizer/`) that:
 
 1. Reads `Authorization: Bearer <jwt>` header.
 2. Verifies signature using secret from Secrets Manager
