@@ -1,0 +1,175 @@
+# =============================================================================
+# ORION Backend - Root SAM template
+# =============================================================================
+# Orchestrates the HTTP API (v2), Lambda Authorizer, shared Lambda Layers,
+# and one nested stack per bounded context.
+#
+# Runtime: nodejs24.x (LTS Krypton, EOL Apr 2028).
+# All runtime config is sourced from SSM via {{resolve:ssm:...}} so that
+# orion-infrastructure (Terraform) is the single source of truth for ARNs.
+# =============================================================================
+
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: ORION backend - serverless DDD+EDA monolith on AWS Lambda.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+    Description: Deployment environment.
+
+  # SSM parameters (populated by orion-infrastructure Terraform module)
+  JwtSecretArn:
+    Type: String
+    Description: ARN of the JWT signing secret in Secrets Manager.
+    Default: ''
+
+  DbSecretArn:
+    Type: String
+    Description: ARN of the PostgreSQL credentials secret.
+    Default: ''
+
+  EventBridgeBusArn:
+    Type: String
+    Description: ARN of the ORION EventBridge bus.
+    Default: ''
+
+Globals:
+  Function:
+    Runtime: nodejs24.x
+    MemorySize: 512
+    Timeout: 15
+    Tracing: Active
+    Architectures: [x86_64]
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        LOG_LEVEL: INFO
+        POWERTOOLS_SERVICE_NAME: !Sub "orion-backend-${Environment}"
+        NODE_OPTIONS: --enable-source-maps
+        JWT_SECRET_ARN: '{{resolve:ssm:/orion/secret/jwt-arn}}'
+        DB_SECRET_ARN: '{{resolve:ssm:/orion/db/secret-arn}}'
+        EVENT_BUS_ARN: '{{resolve:ssm:/orion/eventbridge/bus-arn}}'
+
+Resources:
+  # ---------------------------------------------------------------------------
+  # HTTP API v2 - public entry point for all ORION APIs
+  # ---------------------------------------------------------------------------
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub "orion-http-api-${Environment}"
+      ProtocolType: HTTP
+      Description: ORION backend public HTTP API.
+      CorsConfiguration:
+        AllowOrigins: ['*']   # TODO Phase 2: replace with whitelist from SSM /orion/cors/allowed-origins
+        AllowMethods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+        AllowHeaders: [Content-Type, Authorization, X-Correlation-Id]
+        ExposeHeaders: [X-Correlation-Id]
+        MaxAge: 86400
+
+  HttpApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: !Ref Environment
+      AutoDeploy: true
+      Description: !Sub "Auto-deployed stage for ${Environment}"
+
+  # ---------------------------------------------------------------------------
+  # Lambda Authorizer (REQUEST type) - validates JWTs signed with our HS256 secret
+  # Defined here so all nested context stacks can reference it via parameter.
+  # Actual Lambda function lives in contexts/authorizer/ (nested stack).
+  # ---------------------------------------------------------------------------
+  AuthorizerStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./contexts/authorizer/template.yaml
+      Parameters:
+        HttpApiId: !Ref HttpApi
+        Environment: !Ref Environment
+
+  ApiGatewayAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref HttpApi
+      Name: orion-jwt-authorizer
+      AuthorizerType: REQUEST
+      AuthorizerUri: !GetAtt AuthorizerStack.Outputs.AuthorizerFunctionInvokeArn
+      AuthorizerCredentialsArn: !GetAtt AuthorizerStack.Outputs.AuthorizerFunctionRoleArn
+      IdentitySource:
+        - $request.header.Authorization
+      AuthorizerResultTtlInSeconds: 300
+      AuthorizerPayloadFormatVersion: '2.0'
+      EnableSimpleResponses: true
+
+  AuthorizerInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt AuthorizerStack.Outputs.AuthorizerFunctionName
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
+
+  # ---------------------------------------------------------------------------
+  # Lambda Layers - shared kernel + runtime dependencies
+  # ---------------------------------------------------------------------------
+  NodeSharedLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "orion-node-shared-${Environment}"
+      Description: Compiled @orion/shared workspace (built via npm run layer:build:all).
+      ContentUri: ./layers/node-shared/
+      CompatibleRuntimes: [nodejs24.x]
+      RetentionPolicy: Retain
+
+  NodeRuntimeLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "orion-node-runtime-${Environment}"
+      Description: Runtime dependencies (jose, zod, middy, kysely, pg, powertools).
+      ContentUri: ./layers/node-runtime/
+      CompatibleRuntimes: [nodejs24.x]
+      RetentionPolicy: Retain
+
+  # ---------------------------------------------------------------------------
+  # Application-wide log group
+  # ---------------------------------------------------------------------------
+  ApplicationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/orion/${Environment}/application"
+      RetentionInDays: 30
+
+Outputs:
+  HttpApiUrl:
+    Description: Public URL of the ORION HTTP API.
+    Value: !GetAtt HttpApi.ApiEndpoint
+    Export:
+      Name: !Sub "orion-http-api-url-${Environment}"
+
+  HttpApiId:
+    Description: HTTP API ID (for cross-stack references).
+    Value: !Ref HttpApi
+    Export:
+      Name: !Sub "orion-http-api-id-${Environment}"
+
+  ApiGatewayAuthorizerId:
+    Description: Authorizer ID (attach to routes in nested context stacks).
+    Value: !Ref ApiGatewayAuthorizer
+    Export:
+      Name: !Sub "orion-authorizer-id-${Environment}"
+
+  NodeSharedLayerArn:
+    Description: ARN of the shared kernel Lambda Layer.
+    Value: !Ref NodeSharedLayer
+    Export:
+      Name: !Sub "orion-node-shared-layer-arn-${Environment}"
+
+  NodeRuntimeLayerArn:
+    Description: ARN of the runtime dependencies Lambda Layer.
+    Value: !Ref NodeRuntimeLayer
+    Export:
+      Name: !Sub "orion-node-runtime-layer-arn-${Environment}"

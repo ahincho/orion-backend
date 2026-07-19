@@ -1,0 +1,30 @@
+# =============================================================================
+# SAM configuration for ORION backend
+# =============================================================================
+# Per-environment overrides for sam deploy. Default targets dev.
+# =============================================================================
+
+version = 0.1
+
+[default]
+region = us-east-1
+confirm_changeset = true
+capabilities = CAPABILITY_IAM CAPABILITY_AUTO_EXPAND
+parameter_overrides =
+  Environment = "dev"
+stack_name = "orion-backend-dev"
+s3_bucket = "orion-sam-artifacts-dev"
+s3_prefix = "orion-backend"
+image_repositories = []
+watch_template = true
+
+[prod]
+region = us-east-1
+confirm_changeset = true
+capabilities = CAPABILITY_IAM CAPABILITY_AUTO_EXPAND
+parameter_overrides =
+  Environment = "prod"
+stack_name = "orion-backend-prod"
+s3_bucket = "orion-sam-artifacts-prod"
+s3_prefix = "orion-backend"
+deploy_confirm_changeset = true

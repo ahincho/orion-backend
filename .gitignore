@@ -1,0 +1,65 @@
+# =============================================================================
+# ORION Backend - Git ignore
+# =============================================================================
+# Excludes build artifacts, SAM outputs, secrets, and local configs.
+# =============================================================================
+
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.aws-sam/
+*.tsbuildinfo
+
+# Coverage
+coverage/
+*.lcov
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files (NEVER commit secrets)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SAM / Lambda layers (built artifacts)
+layers/*/node_modules/
+layers/*/dist/
+layers/*.zip
+
+# Shared compiled output
+shared/dist/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Test output
+junit.xml
+test-results/
+
+# Terraform (if applied locally)
+.terraform/
+*.tfstate
+*.tfstate.backup
