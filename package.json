@@ -41,14 +41,14 @@
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.152",
-    "@types/node": "^24.7.0",
+    "@types/node": "^26.1.1",
     "@typescript-eslint/eslint-plugin": "^8.18.0",
     "@typescript-eslint/parser": "^8.18.0",
     "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^10.7.0",
     "node-pg-migrate": "^9.0.0",
     "prettier": "^3.4.2",
-    "typescript": "^5.7.2",
+    "typescript": "^6.0.3",
     "typescript-eslint": "^8.18.0",
     "vitest": "^4.1.10"
   }
