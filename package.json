@@ -2,6 +2,15 @@
   "name": "@orion/backend",
   "version": "0.0.0",
   "description": "ORION backend: serverless DDD+EDA monolith (Lambda + TypeScript + PostgreSQL).",
+  "keywords": [
+    "orion",
+    "serverless",
+    "aws-lambda",
+    "typescript",
+    "ddd",
+    "eda",
+    "postgres"
+  ],
   "private": true,
   "type": "module",
   "engines": {
