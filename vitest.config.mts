@@ -25,16 +25,10 @@ export default defineConfig({
         '**/handlers/**',
       ],
       thresholds: {
-        // Bootstrap thresholds. Raise these as coverage expands; track in
-        // ADRs + per-PR coverage diff. Final target is 80/80/70/80.
-        // Note: vitest 4 + @vitest/coverage-v8 4 detect more branches than
-        // vitest 2 did (same code, more granular branch instrumentation),
-        // so the branches threshold was lowered from 40 to 30 to keep the
-        // bump green without weakening coverage intent. Raise back to 40
-        // once additional branch coverage tests land.
+        // Bootstrap thresholds. Target 80/80/70/80 (tracked via ADRs).
         lines: 35,
         functions: 30,
-        branches: 30,
+        branches: 40,
         statements: 35,
       },
     },

@@ -11,7 +11,6 @@ updates:
       time: '08:00'
     commit-message:
       prefix: 'ci(deps)'
-      include: 'scope'
     labels:
       - 'dependencies'
     groups:
@@ -38,7 +37,6 @@ updates:
       time: '08:00'
     commit-message:
       prefix: 'ci(deps)'
-      include: 'scope'
     labels:
       - 'dependencies'
     groups:

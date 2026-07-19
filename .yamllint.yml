@@ -9,6 +9,11 @@
 
 extends: default
 
+ignore: |
+  node_modules/
+  coverage/
+  dist/
+
 rules:
   # Allow long lines in templates.
   line-length: disable

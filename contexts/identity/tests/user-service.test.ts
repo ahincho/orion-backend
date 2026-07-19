@@ -115,6 +115,7 @@ describe('userService.authenticate', () => {
     const deps = makeDeps({ existingUser: user });
     // Make verifyPassword succeed by stubbing the password-hasher module
     vi.mock('../src/password-hasher.js', async (importOriginal) => {
+      // eslint-disable-next-line @typescript-eslint/consistent-type-imports
       const actual = await importOriginal<typeof import('../src/password-hasher.js')>();
       return {
         ...actual,
