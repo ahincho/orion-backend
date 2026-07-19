@@ -1,0 +1,75 @@
+{
+  "name": "@orion/shared",
+  "version": "0.0.0",
+  "description": "ORION backend shared kernel: auth, http, events, infra, logger, cors, templates.",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./auth": {
+      "types": "./dist/auth/index.d.ts",
+      "import": "./dist/auth/index.js",
+      "default": "./dist/auth/index.js"
+    },
+    "./http": {
+      "types": "./dist/http/index.d.ts",
+      "import": "./dist/http/index.js",
+      "default": "./dist/http/index.js"
+    },
+    "./events": {
+      "types": "./dist/events/index.d.ts",
+      "import": "./dist/events/index.js",
+      "default": "./dist/events/index.js"
+    },
+    "./infra": {
+      "types": "./dist/infra/index.d.ts",
+      "import": "./dist/infra/index.js",
+      "default": "./dist/infra/index.js"
+    },
+    "./logger": {
+      "types": "./dist/logger/index.d.ts",
+      "import": "./dist/logger/index.js",
+      "default": "./dist/logger/index.js"
+    },
+    "./cors": {
+      "types": "./dist/cors/index.d.ts",
+      "import": "./dist/cors/index.js",
+      "default": "./dist/cors/index.js"
+    },
+    "./templates": {
+      "types": "./dist/templates/index.d.ts",
+      "import": "./dist/templates/index.js",
+      "default": "./dist/templates/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "test": "vitest run --root ../ --dir src",
+    "test:watch": "vitest --root ../ --dir src"
+  },
+  "dependencies": {
+    "@aws-lambda-powertools/logger": "^2.18.0",
+    "@aws-lambda-powertools/tracer": "^2.18.0",
+    "@aws-sdk/client-eventbridge": "^3.717.0",
+    "@aws-sdk/client-secrets-manager": "^3.717.0",
+    "@aws-sdk/client-ssm": "^3.717.0",
+    "@middy/core": "^6.1.2",
+    "@middy/http-cors": "^6.1.2",
+    "@middy/http-error-handler": "^6.1.2",
+    "@middy/http-header-normalizer": "^6.1.2",
+    "@middy/http-json-body-parser": "^6.1.2",
+    "jose": "^5.9.6",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.152",
+    "typescript": "^5.7.2"
+  }
+}
