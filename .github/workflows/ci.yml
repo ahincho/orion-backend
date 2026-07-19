@@ -35,17 +35,10 @@ concurrency:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Lint & Security (actionlint + gitleaks + yamllint)
-  # ---------------------------------------------------------------------------
-  lint-security:
-    name: Lint & Security
-    uses: spark-match/spark-match-01-devops/.github/workflows/ci.yml@dev
-
-  # ---------------------------------------------------------------------------
-  # Install dependencies (Node 24)
+  # Install dependencies (Node 24) - prep for build and test
   # ---------------------------------------------------------------------------
   install:
-    name: Install dependencies
+    name: Install
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -69,10 +62,42 @@ jobs:
         run: npm ci
 
   # ---------------------------------------------------------------------------
-  # TypeScript typecheck (strict)
+  # Lint & Security - actionlint + gitleaks + yamllint
+  # Inline until spark-match-01-devops reusable exposes workflow_call.
+  # Reports as the 'lint' status context so the main ruleset can require it.
   # ---------------------------------------------------------------------------
-  typecheck:
-    name: TypeScript typecheck
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download actionlint binary
+        id: get_actionlint
+        run: bash <(curl --fail --silent --show-error --location https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash)
+        shell: bash
+
+      - name: Run actionlint
+        run: ${{ steps.get_actionlint.outputs.executable }} -color
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install yamllint
+        run: pip install --quiet yamllint==1.35.1
+
+      - name: Run yamllint
+        run: yamllint .
+
+  # ---------------------------------------------------------------------------
+  # TypeScript typecheck (strict) - reports as 'build' context
+  # ---------------------------------------------------------------------------
+  build:
+    name: build
     needs: install
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -103,10 +128,10 @@ jobs:
         run: npm run typecheck
 
   # ---------------------------------------------------------------------------
-  # Unit tests + coverage (Vitest)
+  # Unit tests + coverage (Vitest) - reports as 'test' context
   # ---------------------------------------------------------------------------
   test:
-    name: Unit tests + coverage
+    name: test
     needs: install
     runs-on: ubuntu-latest
     timeout-minutes: 10
