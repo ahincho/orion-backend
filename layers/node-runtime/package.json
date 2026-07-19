@@ -19,7 +19,7 @@
     "@middy/http-header-normalizer": "^6.1.2",
     "@middy/http-json-body-parser": "^6.1.2",
     "jose": "^5.9.6",
-    "kysely": "^0.27.5",
+    "kysely": "^0.29.4",
     "pg": "^8.13.1",
     "zod": "^3.24.1"
   }
