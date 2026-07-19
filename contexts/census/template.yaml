@@ -1,0 +1,119 @@
+# =============================================================================
+# Census context - SAM nested stack
+# =============================================================================
+# 2 Lambdas for the P1 bounded context (Asignacion de Censos):
+#   - CensusListUnassignedFunction: GET  /v1/census/homes/unassigned
+#   - CensusAssignFunction:        POST /v1/census/assignments
+#
+# Both require JWT auth (Lambda Authorizer from root stack).
+# =============================================================================
+
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: ORION P1 bounded context: Asignacion de Censos.
+
+Parameters:
+  HttpApiId:
+    Type: String
+  ApiGatewayAuthorizerId:
+    Type: String
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+
+Globals:
+  Function:
+    Runtime: nodejs24.x
+    MemorySize: 512
+    Timeout: 15
+    Tracing: Active
+    Architectures: [x86_64]
+    Layers:
+      - !ImportValue
+        Fn::Sub: "orion-node-shared-layer-arn-${Environment}"
+      - !ImportValue
+        Fn::Sub: "orion-node-runtime-layer-arn-${Environment}"
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        LOG_LEVEL: INFO
+        POWERTOOLS_SERVICE_NAME: !Sub "orion-census-${Environment}"
+        NODE_OPTIONS: --enable-source-maps
+        DB_SECRET_ARN: '{{resolve:ssm:/orion/db/secret-arn}}'
+        EVENT_BUS_ARN: '{{resolve:ssm:/orion/eventbridge/bus-arn}}'
+
+Resources:
+  CensusFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CensusAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                Resource:
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/orion/*"
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - events:PutEvents
+                Resource: '*'
+
+  CensusListUnassignedFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "orion-census-list-unassigned-${Environment}"
+      Handler: handlers/list-unassigned.handler
+      CodeUri: ./
+      Role: !GetAtt CensusFunctionRole.Arn
+      Events:
+        ListUnassignedApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiId
+            Path: /v1/census/homes/unassigned
+            Method: GET
+            Authorizer: !Ref ApiGatewayAuthorizerId
+
+  CensusAssignFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "orion-census-assign-${Environment}"
+      Handler: handlers/assign.handler
+      CodeUri: ./
+      Role: !GetAtt CensusFunctionRole.Arn
+      Events:
+        AssignApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiId
+            Path: /v1/census/assignments
+            Method: POST
+            Authorizer: !Ref ApiGatewayAuthorizerId
+
+Outputs:
+  CensusListUnassignedFunctionName:
+    Value: !Ref CensusListUnassignedFunction
+    Export:
+      Name: !Sub "orion-census-list-unassigned-name-${Environment}"
+
+  CensusAssignFunctionName:
+    Value: !Ref CensusAssignFunction
+    Export:
+      Name: !Sub "orion-census-assign-name-${Environment}"
