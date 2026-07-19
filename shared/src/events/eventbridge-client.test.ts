@@ -1,11 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createEventBridgeClient, makeDomainEvent } from './eventbridge-client.js';
 
-const sendMock = vi.fn();
+const { sendMock } = vi.hoisted(() => ({ sendMock: vi.fn() }));
 
 vi.mock('@aws-sdk/client-eventbridge', () => ({
-  EventBridgeClient: vi.fn().mockImplementation(() => ({ send: sendMock })),
-  PutEventsCommand: vi.fn().mockImplementation((input) => ({ input })),
+  EventBridgeClient: vi.fn(function () {
+    return { send: sendMock };
+  }),
+  PutEventsCommand: vi.fn(function (input: unknown) {
+    return { input };
+  }),
 }));
 
 describe('createEventBridgeClient', () => {
