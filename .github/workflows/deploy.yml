@@ -1,8 +1,17 @@
 # =============================================================================
 # CD - Deploy ORION backend via SAM
 # =============================================================================
-# Triggered on push to main. Builds layers + SAM template, deploys via OIDC.
-# Phase 0: dev only. Add prod environment with reviewer approval when needed.
+# Triggered on push to main. Delegates the build + deploy steps to the
+# `sam-deploy.yml` reusable in spark-match-01-devops. The reusable handles:
+#   - checkout
+#   - node + npm cache
+#   - AWS OIDC credentials (secrets.AWS_DEPLOY_ROLE_ARN)
+#   - npm ci + pre-build + Lambda Layers build
+#   - SAM CLI install + validate + build --use-container
+#   - sam deploy --config-env <env> (idempotent, no-fail-on-empty-changeset)
+#
+# Phase 0: dev only. To add prod: a second job below + a `prod` GH
+# Environment in repo settings holding AWS_DEPLOY_ROLE_ARN_PROD.
 # =============================================================================
 
 name: CD - Deploy
@@ -22,9 +31,14 @@ on:
       - 'shared/**'
       - 'contexts/**'
 
+# `id-token: write` is required at the caller side so the reusable workflow
+# can mint an OIDC JWT for the AWS role assumption. The reusable itself
+# declares its own `permissions: id-token: write`, but the CALLER must
+# also opt in (GitHub OIDC token is generated from the caller's permissions
+# context).
 permissions:
-  id-token: write   # OIDC for AWS role assumption
   contents: read
+  id-token: write
 
 concurrency:
   group: deploy-${{ github.ref }}
@@ -33,50 +47,17 @@ concurrency:
 jobs:
   deploy-dev:
     name: Deploy to dev
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment: dev   # GH Environment for secret scoping
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js 24
-        uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-
-      - name: Cache npm dependencies
-        uses: actions/cache@v6
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node24-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node24-
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build shared workspace
-        run: npm run build:shared
-
-      - name: Build Lambda Layers
-        run: npm run layer:build:all
-
-      - name: Install SAM CLI
-        uses: aws-actions/setup-sam@v3
-        with:
-          version: 1.151.0
-
-      - name: SAM build
-        run: sam build --use-container
-
-      - name: SAM deploy (dev)
-        run: sam deploy --config-env default --no-confirm-changeset --no-fail-on-empty-changeset
-        env:
-          AWS_SAM_STACK_NAME: orion-backend-dev
+    uses: spark-match/spark-match-01-devops/.github/workflows/sam-deploy.yml@dev
+    with:
+      environment-name: dev
+      aws-region: us-east-1
+      stack-name: orion-backend-dev
+      sam-template: template.yaml
+      sam-config-env: default
+      s3-bucket: orion-sam-artifacts-dev
+      node-version: '24'
+      sam-cli-version: 1.151.0
+      pre-build-script: build:shared
+      build-layers-script: layer:build:all
+    secrets:
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
