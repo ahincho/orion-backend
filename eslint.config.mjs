@@ -1,9 +1,9 @@
-# =============================================================================
-# ORION Backend - ESLint flat config
-# =============================================================================
-# Lints TypeScript with strict rules aligned with TypeScript strict mode.
-# Uses the new flat config format (ESLint 9+).
-# =============================================================================
+// =============================================================================
+// ORION Backend - ESLint flat config
+// =============================================================================
+// Lints TypeScript with strict rules aligned with TypeScript strict mode.
+// Uses the new flat config format (ESLint 9+).
+// =============================================================================
 
 import tseslint from 'typescript-eslint';
 
@@ -35,7 +35,7 @@ export default tseslint.config(
         { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
       ],
       'no-console': ['warn', { allow: ['warn', 'error'] }],
-      'eqeqeq': ['error', 'always'],
+      eqeqeq: ['error', 'always'],
     },
   },
 );

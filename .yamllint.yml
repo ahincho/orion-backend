@@ -1,0 +1,26 @@
+# =============================================================================
+# yamllint config - relaxed for SAM CloudFormation templates
+# =============================================================================
+# Default yamllint rules are designed for application YAML (k8s, ansible,
+# docker-compose). SAM CloudFormation templates have long intrinsic
+# function references (e.g., !Ref, !GetAtt, !Sub) that easily exceed 80
+# characters and contain unescaped colons/braces. Whitelist those.
+# =============================================================================
+
+extends: default
+
+rules:
+  # Allow long lines in templates.
+  line-length: disable
+  # AWS intrinsic tags are not real booleans.
+  truthy:
+    allowed-values: ['true', 'false', 'on', 'off']
+    check-keys: false
+  # Allow colon-prefixed CloudFormation keys.
+  colons: disable
+  # Allow inline comments documenting transforms.
+  comments:
+    require-starting-space: true
+    min-spaces-from-content: 1
+  # Allow documents without `---` start marker (SAM snippets).
+  document-start: disable

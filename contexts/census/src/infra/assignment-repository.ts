@@ -45,9 +45,9 @@ function mapRowToAssignment(row: AssignmentRow): Assignment {
     assigneeId: row.assignee_id,
     assignedBy: row.assigned_by,
     scheduledDate:
-      row.scheduled_date instanceof Date
-        ? row.scheduled_date.toISOString().slice(0, 10)
-        : String(row.scheduled_date),
+      typeof row.scheduled_date === 'string'
+        ? row.scheduled_date
+        : new Date(row.scheduled_date).toISOString().slice(0, 10),
     status: row.status,
     notes: row.notes,
     createdAt: row.created_at,

@@ -3,16 +3,17 @@
 // =============================================================================
 
 import { Tracer } from '@aws-lambda-powertools/tracer';
-import { buildHandler, type AuthContext } from '@orion/shared/templates';
+import { buildHandler } from '@orion/shared/templates';
+import { type AuthContext } from '@orion/shared/auth';
 import { createLogger } from '@orion/shared/logger';
 import { buildContext } from '../composition.js';
-import { ListUnassignedQuerySchema } from '../schemas/list.schema.js';
+import { ListUnassignedQuerySchema, type ListUnassignedQuery } from '../schemas/list.schema.js';
 import type { PublicHome } from '../domain/home.js';
 
 const logger = createLogger('census');
 const tracer = new Tracer({ serviceName: 'census' });
 
-export const handler = buildHandler<{ limit: number }, PublicHome[]>({
+export const handler = buildHandler<ListUnassignedQuery, PublicHome[]>({
   inputSchema: ListUnassignedQuerySchema,
   logger,
   tracer,

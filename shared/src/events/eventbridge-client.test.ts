@@ -1,21 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { EventBridgeClient } from '@aws-sdk/client-eventbridge';
 import { createEventBridgeClient, makeDomainEvent } from './eventbridge-client.js';
 
-vi.mock('@aws-sdk/client-eventbridge', () => {
-  const sendMock = vi.fn();
-  return {
-    EventBridgeClient: vi.fn().mockImplementation(() => ({ send: sendMock })),
-    PutEventsCommand: vi.fn().mockImplementation((input) => ({ input })),
-  };
-});
+const sendMock = vi.fn();
+
+vi.mock('@aws-sdk/client-eventbridge', () => ({
+  EventBridgeClient: vi.fn().mockImplementation(() => ({ send: sendMock })),
+  PutEventsCommand: vi.fn().mockImplementation((input) => ({ input })),
+}));
 
 describe('createEventBridgeClient', () => {
-  let sendMock: ReturnType<typeof vi.fn>;
-
   beforeEach(() => {
-    vi.clearAllMocks();
-    sendMock = (EventBridgeClient as unknown as { mock: { results: Array<{ instance: { send: ReturnType<typeof vi.fn> } }> } }).mock.results[0]?.instance.send;
+    sendMock.mockReset();
   });
 
   it('publish() succeeds on first attempt', async () => {
@@ -40,9 +35,9 @@ describe('createEventBridgeClient', () => {
   it('publish() throws after 3 failed attempts', async () => {
     sendMock.mockRejectedValue(new Error('persistent failure'));
     const publisher = createEventBridgeClient({ busArn: 'arn:bus' });
-    await expect(
-      publisher.publish(makeDomainEvent('orion.test', 'X', {})),
-    ).rejects.toThrow('persistent failure');
+    await expect(publisher.publish(makeDomainEvent('orion.test', 'X', {}))).rejects.toThrow(
+      'persistent failure',
+    );
     expect(sendMock).toHaveBeenCalledTimes(3);
   });
 
@@ -52,9 +47,9 @@ describe('createEventBridgeClient', () => {
       Entries: [{ ErrorCode: 'InvalidParameter', ErrorMessage: 'bad source' }],
     });
     const publisher = createEventBridgeClient({ busArn: 'arn:bus' });
-    await expect(
-      publisher.publish(makeDomainEvent('orion.test', 'X', {})),
-    ).rejects.toThrow(/Partial batch failure/);
+    await expect(publisher.publish(makeDomainEvent('orion.test', 'X', {}))).rejects.toThrow(
+      /Partial batch failure/,
+    );
   });
 
   it('publishMany() chunks >10 events into multiple calls', async () => {
@@ -64,7 +59,6 @@ describe('createEventBridgeClient', () => {
       makeDomainEvent('orion.test', 'Bulk', { i }),
     );
     await publisher.publishMany(events);
-    // 25 events / 10 per chunk = 3 chunks
     expect(sendMock).toHaveBeenCalledTimes(3);
   });
 

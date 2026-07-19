@@ -28,9 +28,8 @@ interface CacheEntry {
 }
 
 export function createSecretsReader(config: SecretsReaderConfig = {}): SecretsReader {
-  const client = new SecretsManagerClient({
-    region: config.region ?? process.env.AWS_REGION,
-  });
+  const region = config.region ?? process.env.AWS_REGION;
+  const client = region ? new SecretsManagerClient({ region }) : new SecretsManagerClient({});
   const ttl = config.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
   const cache = new Map<string, CacheEntry>();
 
@@ -53,9 +52,7 @@ export function createSecretsReader(config: SecretsReaderConfig = {}): SecretsRe
     if (cached !== undefined) return cached;
 
     try {
-      const result = await client.send(
-        new GetSecretValueCommand({ SecretId: secretArn }),
-      );
+      const result = await client.send(new GetSecretValueCommand({ SecretId: secretArn }));
       const value = result.SecretString;
       if (value !== undefined) {
         setCached(secretArn, value);

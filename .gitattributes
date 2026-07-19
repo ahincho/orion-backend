@@ -1,0 +1,11 @@
+# Normalize line endings across the repo. Prettier writes LF; Windows tooling
+# would otherwise produce CRLF-only diffs in PRs. Force text files to LF on
+# commit but allow CRLF through for Windows developers via autocrlf.
+* text=auto eol=lf
+
+# Explicit overrides for files that must stay CRLF (none at present).
+# *.bat text eol=crlf
+# *.ps1 text eol=crlf
+
+# Lockfiles must keep LF.
+package-lock.json text eol=lf
