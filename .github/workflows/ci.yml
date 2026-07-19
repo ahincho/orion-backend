@@ -1,0 +1,145 @@
+# =============================================================================
+# CI - Lint, typecheck, and unit tests
+# =============================================================================
+# Triggered on PRs to main. Calls the reusable workflow from
+# spark-match-01-devops (CI - Lint & Security).
+# =============================================================================
+
+name: CI - Lint & Test
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+    paths:
+      - '**.ts'
+      - '**.mjs'
+      - '**.json'
+      - '**.yaml'
+      - '**.yml'
+      - '.github/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.base.json'
+      - 'vitest.config.mts'
+      - 'eslint.config.mjs'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Lint & Security (actionlint + gitleaks + yamllint)
+  # ---------------------------------------------------------------------------
+  lint-security:
+    name: Lint & Security
+    uses: spark-match/spark-match-01-devops/.github/workflows/ci.yml@dev
+
+  # ---------------------------------------------------------------------------
+  # Install dependencies (Node 24)
+  # ---------------------------------------------------------------------------
+  install:
+    name: Install dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node24-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node24-
+
+      - name: Install dependencies
+        run: npm ci
+
+  # ---------------------------------------------------------------------------
+  # TypeScript typecheck (strict)
+  # ---------------------------------------------------------------------------
+  typecheck:
+    name: TypeScript typecheck
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node24-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node24-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared workspace
+        run: npm run build:shared
+
+      - name: Run typecheck
+        run: npm run typecheck
+
+  # ---------------------------------------------------------------------------
+  # Unit tests + coverage (Vitest)
+  # ---------------------------------------------------------------------------
+  test:
+    name: Unit tests + coverage
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node24-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node24-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared workspace
+        run: npm run build:shared
+
+      - name: Run tests with coverage
+        run: npm run test:coverage
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7

@@ -1,0 +1,82 @@
+# =============================================================================
+# CD - Deploy ORION backend via SAM
+# =============================================================================
+# Triggered on push to main. Builds layers + SAM template, deploys via OIDC.
+# Phase 0: dev only. Add prod environment with reviewer approval when needed.
+# =============================================================================
+
+name: CD - Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**.ts'
+      - '**.mjs'
+      - '**.json'
+      - '**.yaml'
+      - '**.yml'
+      - 'template.yaml'
+      - 'samconfig.toml'
+      - 'layers/**'
+      - 'shared/**'
+      - 'contexts/**'
+
+permissions:
+  id-token: write   # OIDC for AWS role assumption
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false   # never cancel an in-progress deploy
+
+jobs:
+  deploy-dev:
+    name: Deploy to dev
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: dev   # GH Environment for secret scoping
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node24-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node24-
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared workspace
+        run: npm run build:shared
+
+      - name: Build Lambda Layers
+        run: npm run layer:build:all
+
+      - name: Install SAM CLI
+        uses: aws-actions/setup-sam@v2
+        with:
+          version: 1.151.0
+
+      - name: SAM build
+        run: sam build --use-container
+
+      - name: SAM deploy (dev)
+        run: sam deploy --config-env default --no-confirm-changeset --no-fail-on-empty-changeset
+        env:
+          AWS_SAM_STACK_NAME: orion-backend-dev

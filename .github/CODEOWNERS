@@ -1,0 +1,8 @@
+# =============================================================================
+# ORION Backend CODEOWNERS
+# =============================================================================
+# Single owner for solo-dev bootstrap. Expand as the team grows.
+# =============================================================================
+
+# Backend services and infrastructure: sole owner.
+* @ahincho
