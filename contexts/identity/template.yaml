@@ -1,0 +1,177 @@
+# =============================================================================
+# Identity context - SAM nested stack
+# =============================================================================
+# 4 Lambdas:
+#   - IdentityRegisterFunction:   POST /v1/auth/register
+#   - IdentityLoginFunction:      POST /v1/auth/login
+#   - IdentityGetMeFunction:      GET  /v1/users/me          (auth required)
+#   - IdentityChangePasswordFunction: POST /v1/users/me/password  (auth required)
+#
+# All protected routes use the orion-jwt-authorizer created in the root stack.
+# =============================================================================
+
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: ORION identity bounded context: users, sessions, login, register.
+
+Parameters:
+  HttpApiId:
+    Type: String
+    Description: HTTP API ID from the root stack.
+  ApiGatewayAuthorizerId:
+    Type: String
+    Description: ID of the Lambda Authorizer created in the root stack.
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+
+Globals:
+  Function:
+    Runtime: nodejs24.x
+    MemorySize: 512
+    Timeout: 15
+    Tracing: Active
+    Architectures: [x86_64]
+    Layers:
+      - !ImportValue
+        Fn::Sub: "orion-node-shared-layer-arn-${Environment}"
+      - !ImportValue
+        Fn::Sub: "orion-node-runtime-layer-arn-${Environment}"
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        LOG_LEVEL: INFO
+        POWERTOOLS_SERVICE_NAME: !Sub "orion-identity-${Environment}"
+        NODE_OPTIONS: --enable-source-maps
+        DB_SECRET_ARN: '{{resolve:ssm:/orion/db/secret-arn}}'
+        EVENT_BUS_ARN: '{{resolve:ssm:/orion/eventbridge/bus-arn}}'
+
+Resources:
+  # Shared IAM role for all identity Lambdas (DB + EventBridge + SSM + Secrets access)
+  IdentityFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: IdentityAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource:
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/orion/*"
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - events:PutEvents
+                Resource: '*'
+
+  # ---------------------------------------------------------------------------
+  # POST /v1/auth/register (no auth)
+  # ---------------------------------------------------------------------------
+  IdentityRegisterFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "orion-identity-register-${Environment}"
+      Handler: handlers/register.handler
+      CodeUri: ./
+      Role: !GetAtt IdentityFunctionRole.Arn
+      Events:
+        RegisterApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiId
+            Path: /v1/auth/register
+            Method: POST
+
+  # ---------------------------------------------------------------------------
+  # POST /v1/auth/login (no auth)
+  # ---------------------------------------------------------------------------
+  IdentityLoginFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "orion-identity-login-${Environment}"
+      Handler: handlers/login.handler
+      CodeUri: ./
+      Role: !GetAtt IdentityFunctionRole.Arn
+      Events:
+        LoginApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiId
+            Path: /v1/auth/login
+            Method: POST
+
+  # ---------------------------------------------------------------------------
+  # GET /v1/users/me (auth required)
+  # ---------------------------------------------------------------------------
+  IdentityGetMeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "orion-identity-get-me-${Environment}"
+      Handler: handlers/get-me.handler
+      CodeUri: ./
+      Role: !GetAtt IdentityFunctionRole.Arn
+      Events:
+        GetMeApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiId
+            Path: /v1/users/me
+            Method: GET
+            Authorizer: !Ref ApiGatewayAuthorizerId
+
+  # ---------------------------------------------------------------------------
+  # POST /v1/users/me/password (auth required)
+  # ---------------------------------------------------------------------------
+  IdentityChangePasswordFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "orion-identity-change-password-${Environment}"
+      Handler: handlers/change-password.handler
+      CodeUri: ./
+      Role: !GetAtt IdentityFunctionRole.Arn
+      Events:
+        ChangePasswordApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiId
+            Path: /v1/users/me/password
+            Method: POST
+            Authorizer: !Ref ApiGatewayAuthorizerId
+
+Outputs:
+  IdentityRegisterFunctionName:
+    Value: !Ref IdentityRegisterFunction
+    Export:
+      Name: !Sub "orion-identity-register-name-${Environment}"
+
+  IdentityLoginFunctionName:
+    Value: !Ref IdentityLoginFunction
+    Export:
+      Name: !Sub "orion-identity-login-name-${Environment}"
+
+  IdentityGetMeFunctionName:
+    Value: !Ref IdentityGetMeFunction
+    Export:
+      Name: !Sub "orion-identity-get-me-name-${Environment}"
+
+  IdentityChangePasswordFunctionName:
+    Value: !Ref IdentityChangePasswordFunction
+    Export:
+      Name: !Sub "orion-identity-change-password-name-${Environment}"
