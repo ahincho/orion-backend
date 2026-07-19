@@ -99,7 +99,7 @@ jobs:
         run: ${{ steps.get_actionlint.outputs.executable }} -color
 
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v1
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
