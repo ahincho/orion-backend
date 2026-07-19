@@ -1,0 +1,24 @@
+{
+  "name": "@orion/context-identity",
+  "version": "0.0.0",
+  "description": "ORION identity bounded context: users, sessions, login, register.",
+  "private": true,
+  "type": "module",
+  "main": "./dist/composition.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --root ../.."
+  },
+  "dependencies": {
+    "@orion/shared": "*",
+    "jose": "^5.9.6",
+    "kysely": "^0.27.5",
+    "pg": "^8.13.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.152",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.7.2"
+  }
+}

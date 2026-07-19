@@ -1,0 +1,20 @@
+{
+  "name": "@orion/context-authorizer",
+  "version": "0.0.0",
+  "description": "ORION Lambda Authorizer (REQUEST type): validates HS256 JWTs issued by the identity context.",
+  "private": true,
+  "type": "module",
+  "main": "./dist/handler.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --root ../.."
+  },
+  "dependencies": {
+    "@orion/shared": "*",
+    "jose": "^5.9.6"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.152",
+    "typescript": "^5.7.2"
+  }
+}
