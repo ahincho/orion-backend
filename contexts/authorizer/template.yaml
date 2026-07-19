@@ -1,0 +1,105 @@
+# =============================================================================
+# Authorizer context - SAM nested stack
+# =============================================================================
+# Deploys 1 Lambda (the Lambda Authorizer) plus its IAM role with permissions
+# to read SSM and Secrets Manager for the JWT signing secret.
+#
+# The root template.yaml references this stack via:
+#   AuthorizerStack: Type: AWS::CloudFormation::Stack
+#     TemplateURL: ./contexts/authorizer/template.yaml
+# =============================================================================
+
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: ORION Lambda Authorizer (JWT HS256 validation).
+
+Parameters:
+  HttpApiId:
+    Type: String
+    Description: HTTP API ID from the root stack.
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+
+Globals:
+  Function:
+    Runtime: nodejs24.x
+    MemorySize: 256
+    Timeout: 5
+    Tracing: Active
+    Architectures: [x86_64]
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        LOG_LEVEL: INFO
+        POWERTOOLS_SERVICE_NAME: !Sub "orion-authorizer-${Environment}"
+        NODE_OPTIONS: --enable-source-maps
+
+Resources:
+  AuthorizerFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: AuthorizerSecretsRead
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource:
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/orion/secret/jwt-arn"
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/orion/*"
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: '*'
+
+  AuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "orion-authorizer-${Environment}"
+      Handler: handler.handler
+      CodeUri: ./
+      Role: !GetAtt AuthorizerFunctionRole.Arn
+      Layers:
+        - !ImportValue
+          Fn::Sub: "orion-node-shared-layer-arn-${Environment}"
+        - !ImportValue
+          Fn::Sub: "orion-node-runtime-layer-arn-${Environment}"
+
+Outputs:
+  AuthorizerFunctionName:
+    Description: Name of the Authorizer Lambda function.
+    Value: !Ref AuthorizerFunction
+    Export:
+      Name: !Sub "orion-authorizer-function-name-${Environment}"
+
+  AuthorizerFunctionArn:
+    Description: ARN of the Authorizer Lambda function.
+    Value: !GetAtt AuthorizerFunction.Arn
+    Export:
+      Name: !Sub "orion-authorizer-function-arn-${Environment}"
+
+  AuthorizerFunctionInvokeArn:
+    Description: Invoke ARN (with alias suffix) for API Gateway.
+    Value: !Sub "${AuthorizerFunction.Arn}"
+    Export:
+      Name: !Sub "orion-authorizer-invoke-arn-${Environment}"
+
+  AuthorizerFunctionRoleArn:
+    Description: IAM role ARN assumed by API Gateway.
+    Value: !GetAtt AuthorizerFunctionRole.Arn
+    Export:
+      Name: !Sub "orion-authorizer-role-arn-${Environment}"
