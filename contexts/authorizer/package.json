@@ -6,7 +6,7 @@
   "type": "module",
   "main": "./dist/handler.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/copy-package.js",
     "test": "vitest run --root ../.."
   },
   "dependencies": {
