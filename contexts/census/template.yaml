@@ -89,7 +89,7 @@ Resources:
     Properties:
       FunctionName: !Sub 'orion-census-list-unassigned-${Environment}'
       Handler: handlers/list-unassigned.handler
-      CodeUri: ./
+      CodeUri: ./dist
       Role: !GetAtt CensusFunctionRole.Arn
       VpcConfig: !If
         - AttachToVpc
@@ -103,7 +103,7 @@ Resources:
     Properties:
       FunctionName: !Sub 'orion-census-assign-${Environment}'
       Handler: handlers/assign.handler
-      CodeUri: ./
+      CodeUri: ./dist
       Role: !GetAtt CensusFunctionRole.Arn
       VpcConfig: !If
         - AttachToVpc

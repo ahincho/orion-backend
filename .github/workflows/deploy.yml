@@ -144,6 +144,13 @@ jobs:
       - name: Pre-build step
         run: npm run build:shared
 
+      - name: Build contexts (tsc)
+        # Each bounded context under contexts/ compiles its TypeScript to ./dist,
+        # which the nested stack's CodeUri (./dist) zips up for Lambda. SAM CLI
+        # does NOT transpile TS for nested stacks on its own, so this step is
+        # required for the Function Handlers to load.
+        run: npm run build --workspaces --if-present
+
       - name: Build Lambda Layers
         run: npm run layer:build:all
 
