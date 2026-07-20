@@ -1,23 +1,19 @@
 # =============================================================================
 # CD - Deploy ORION backend via SAM
 # =============================================================================
-# Triggered on push to main. Delegates the build + deploy steps to the
-# `sam-deploy.yml` reusable in spark-match-01-devops. The reusable handles:
-#   - checkout
-#   - node + npm cache
-#   - AWS OIDC credentials (secrets.AWS_DEPLOY_ROLE_ARN)
-#   - npm ci + pre-build + Lambda Layers build
-#   - SAM CLI install + validate + build --use-container
-#   - sam deploy --config-env <env> (idempotent, no-fail-on-empty-changeset)
+# Triggered on push to main. Uses aws/aws-actions-github-actions-for-sam@v1
+# (same action consumed by spark-match-03-backend) for build + deploy. We
+# sidestep the SAM CLI 1.151.x `sam validate` regression that the
+# spark-match-01-devops reusable sam-deploy.yml@main still triggers.
 #
-# Phase 1 (VPC attach): a pre-step `resolve-vpc-config` fetches the Lambda
-# subnet IDs and security group ID from SSM (published by
-# orion-infrastructure) and passes them to the reusable as
-# `parameter-overrides-json` so SAM can attach every Lambda in the nested
-# stacks to the orion-dev VPC.
+# Two-job pipeline:
+#   1. resolve-vpc-config  -> reads /orion/lambda/{vpc-subnet-ids,security-group-id}
+#                              from SSM, emits a SAM CLI --parameter-overrides string
+#                              of the form "VpcSubnetIds=subnet-X,subnet-Y LambdaSecurityGroupId=sg-Z".
+#   2. deploy-dev          -> build + deploy via aws/aws-actions-github-actions-for-sam@v1.
 #
-# Phase 0: dev only. To add prod: a second pair of jobs below + a `prod`
-# GH Environment in repo settings holding AWS_DEPLOY_ROLE_ARN_PROD.
+# Phase 0: dev only. To add prod: a second pair of jobs + a `prod` GH
+# Environment in repo settings holding AWS_DEPLOY_ROLE_ARN_PROD.
 # =============================================================================
 
 name: CD - Deploy
@@ -37,34 +33,30 @@ on:
       - 'shared/**'
       - 'contexts/**'
 
-# `id-token: write` is required at the caller side so the reusable workflow
-# (and the resolve-vpc-config pre-step) can mint an OIDC JWT for the AWS
-# role assumption. The reusable itself declares its own
-# `permissions: id-token: write`, but the CALLER must also opt in
-# (GitHub OIDC token is generated from the caller's permissions context).
 permissions:
   contents: read
   id-token: write
 
 concurrency:
   group: deploy-${{ github.ref }}
-  cancel-in-progress: false   # never cancel an in-progress deploy
+  cancel-in-progress: false
 
 jobs:
   # ---------------------------------------------------------------------------
   # Phase 1: resolve VPC params (subnet IDs + Lambda SG) from SSM.
-  # orion-infrastructure (Terraform) publishes them via its `ssm-bootstrap`
-  # module; this job reads them and exposes a JSON object that the reusable
-  # `sam-deploy.yml` consumes via its `parameter-overrides-json` input.
+  # orion-infrastructure publishes them via its `ssm-bootstrap` module;
+  # this job reads them and exposes a SAM-CLI-friendly string that the SAM
+  # action consumes as `--parameter-overrides`.
   #
-  # Resolved shape (matches root template parameter names):
-  #   { "VpcSubnetIds": ["subnet-...", "subnet-..."],
-  #     "LambdaSecurityGroupId": "sg-..." }
+  # Output shape (raw, consumed by `sam deploy --parameter-overrides ...`):
+  #   VpcSubnetIds=subnet-X,subnet-Y LambdaSecurityGroupId=sg-Z
   # ---------------------------------------------------------------------------
   resolve-vpc-config:
     name: Resolve VPC config from SSM
     runs-on: ubuntu-latest
-    environment: dev   # shares the dev env gate with deploy-dev
+    environment: dev
+    outputs:
+      parameter-overrides: ${{ steps.vpc.outputs.parameter-overrides }}
     steps:
       - name: Configure AWS credentials (OIDC, deploy role)
         uses: aws-actions/configure-aws-credentials@v6
@@ -72,7 +64,7 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-east-1
 
-      - name: Fetch VPC params from SSM and build parameter-overrides-json
+      - name: Fetch VPC params from SSM and build --parameter-overrides string
         id: vpc
         run: |
           set -euo pipefail
@@ -86,31 +78,55 @@ jobs:
             echo "::error::Empty SSM value(s); abort."
             exit 1
           fi
-          PARAM_JSON=$(jq -nc \
-            --arg subnets "$SUBNET_IDS" \
-            --arg sg "$SG_ID" \
-            '{VpcSubnetIds: ($subnets | split(",")), LambdaSecurityGroupId: $sg}')
-          echo "Resolved parameter-overrides-json: $PARAM_JSON"
-          echo "parameter-overrides-json=$PARAM_JSON" >> "$GITHUB_OUTPUT"
-
-    outputs:
-      parameter-overrides-json: ${{ steps.vpc.outputs.parameter-overrides-json }}
+          # SAM CLI List type is comma-separated, no shell-escape needed.
+          PARAM_OVERRIDES="VpcSubnetIds=${SUBNET_IDS} LambdaSecurityGroupId=${SG_ID}"
+          echo "Resolved --parameter-overrides: $PARAM_OVERRIDES"
+          echo "parameter-overrides=$PARAM_OVERRIDES" >> "$GITHUB_OUTPUT"
 
   deploy-dev:
     name: Deploy to dev
     needs: resolve-vpc-config
-    uses: spark-match/spark-match-01-devops/.github/workflows/sam-deploy.yml@main
-    with:
-      environment-name: dev
-      aws-region: us-east-1
-      stack-name: orion-backend-dev
-      sam-template: template.yaml
-      sam-config-env: default
-      s3-bucket: orion-sam-artifacts-dev
-      node-version: '24'
-      sam-cli-version: 1.145.0
-      pre-build-script: build:shared
-      build-layers-script: layer:build:all
-      parameter-overrides-json: ${{ needs.resolve-vpc-config.outputs.parameter-overrides-json }}
-    secrets:
-      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Configure AWS credentials (OIDC, deploy role)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pre-build step
+        run: npm run build:shared
+
+      - name: Build Lambda Layers
+        run: npm run layer:build:all
+
+      - name: SAM Build
+        uses: aws/aws-actions-github-actions-for-sam@v1
+        with:
+          use-container: false
+
+      - name: SAM Deploy
+        uses: aws/aws-actions-github-actions-for-sam@v1
+        with:
+          use-container: false
+          command: deploy
+          args: >-
+            --config-env dev
+            --no-fail-on-empty-changeset
+            --no-disable-rollback
+            --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND
+            --region us-east-1
+            --parameter-overrides ${{ needs.resolve-vpc-config.outputs.parameter-overrides }}
