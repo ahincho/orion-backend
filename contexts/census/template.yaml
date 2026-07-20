@@ -10,7 +10,7 @@ Parameters:
   VpcSubnetIds:
     Type: String
     Description: Comma-separated subnet IDs for VPC-attached Lambdas. Empty = no VPC attachment (local).
-    Default: '""'
+    Default: ''
   LambdaSecurityGroupId:
     Type: String
     Description: Security group ID attached to all Lambdas in this stack. Empty = no VPC attachment (local).
@@ -18,7 +18,7 @@ Parameters:
 
 Conditions:
   AttachToVpc: !And
-    - !Not [!Equals [!Ref VpcSubnetIds, '""']]
+    - !Not [!Equals [!Ref VpcSubnetIds, '']]
     - !Not [!Equals [!Ref LambdaSecurityGroupId, '']]
 
 Globals:
@@ -89,7 +89,7 @@ Resources:
       Role: !GetAtt CensusFunctionRole.Arn
       VpcConfig: !If
         - AttachToVpc
-        - SubnetIds: !Ref VpcSubnetIds
+        - SubnetIds: !Split [",", !Ref VpcSubnetIds]
           SecurityGroupIds:
             - !Ref LambdaSecurityGroupId
         - !Ref AWS::NoValue
@@ -103,7 +103,7 @@ Resources:
       Role: !GetAtt CensusFunctionRole.Arn
       VpcConfig: !If
         - AttachToVpc
-        - SubnetIds: !Ref VpcSubnetIds
+        - SubnetIds: !Split [",", !Ref VpcSubnetIds]
           SecurityGroupIds:
             - !Ref LambdaSecurityGroupId
         - !Ref AWS::NoValue
