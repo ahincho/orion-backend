@@ -15,6 +15,12 @@ Parameters:
     Type: String
     Description: Security group ID attached to all Lambdas in this stack. Empty = no VPC attachment (local).
     Default: ''
+  NodeSharedLayerArn:
+    Type: String
+    Description: ARN of the shared kernel Lambda Layer (passed from root stack).
+  NodeRuntimeLayerArn:
+    Type: String
+    Description: ARN of the runtime dependencies Lambda Layer (passed from root stack).
 
 Conditions:
   AttachToVpc: !And
@@ -29,10 +35,8 @@ Globals:
     Tracing: Active
     Architectures: [x86_64]
     Layers:
-      - !ImportValue
-        Fn::Sub: 'orion-node-shared-layer-arn-${Environment}'
-      - !ImportValue
-        Fn::Sub: 'orion-node-runtime-layer-arn-${Environment}'
+      - !Ref NodeSharedLayerArn
+      - !Ref NodeRuntimeLayerArn
     Environment:
       Variables:
         ENVIRONMENT: !Ref Environment

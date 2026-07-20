@@ -31,6 +31,12 @@ Parameters:
     Type: String
     Description: Security group ID for VPC-attached Lambda. Empty = no VpcConfig.
     Default: ''
+  NodeSharedLayerArn:
+    Type: String
+    Description: ARN of the shared kernel Lambda Layer (passed from root stack).
+  NodeRuntimeLayerArn:
+    Type: String
+    Description: ARN of the runtime dependencies Lambda Layer (passed from root stack).
 
 Conditions:
   AttachToVpc: !And
@@ -99,10 +105,8 @@ Resources:
       CodeUri: ./
       Role: !GetAtt AuthorizerFunctionRole.Arn
       Layers:
-        - !ImportValue
-          Fn::Sub: "orion-node-shared-layer-arn-${Environment}"
-        - !ImportValue
-          Fn::Sub: "orion-node-runtime-layer-arn-${Environment}"
+        - !Ref NodeSharedLayerArn
+        - !Ref NodeRuntimeLayerArn
       VpcConfig: !If
         - AttachToVpc
         - SubnetIds: !Split [",", !Ref VpcSubnetIds]
