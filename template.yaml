@@ -74,10 +74,11 @@ Globals:
         LOG_LEVEL: INFO
         POWERTOOLS_SERVICE_NAME: !Sub "orion-backend-${Environment}"
         NODE_OPTIONS: --enable-source-maps
-        JWT_SECRET_ARN: '{{resolve:ssm:/orion/secret/jwt-arn~true}}'
-        DB_SECRET_ARN: '{{resolve:ssm:/orion/db/secret-arn~true}}'
-        EVENT_BUS_ARN: '{{resolve:ssm:/orion/eventbridge/bus-arn~true}}'
-        CORS_ORIGINS: '{{resolve:ssm:/orion/cors/allowed-origins~true}}'
+        # NOTE: runtime config (DB secret ARN, JWT secret ARN, event bus ARN,
+        # CORS origins) is read directly from SSM at runtime by the Lambda
+        # handlers via @orion/shared/infra (createSsmReader, createSecretsReader).
+        # It is NOT injected as env vars to avoid CloudFormation SSM
+        # SecureString resolve:~true format restrictions.
 
 Resources:
   # ---------------------------------------------------------------------------
