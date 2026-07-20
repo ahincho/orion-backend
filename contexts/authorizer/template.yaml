@@ -56,7 +56,7 @@ Globals:
         LOG_LEVEL: INFO
         POWERTOOLS_SERVICE_NAME: !Sub "orion-authorizer-${Environment}"
         NODE_OPTIONS: --enable-source-maps
-        CORS_ORIGINS: '{{resolve:ssm:/orion/cors/allowed-origins}}'
+        CORS_ORIGINS: '{{resolve:ssm:/orion/cors/allowed-origins~true}}'
 
 Resources:
   AuthorizerFunctionRole:

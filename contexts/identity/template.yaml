@@ -43,9 +43,9 @@ Globals:
         LOG_LEVEL: INFO
         POWERTOOLS_SERVICE_NAME: !Sub 'orion-identity-${Environment}'
         NODE_OPTIONS: --enable-source-maps
-        DB_SECRET_ARN: '{{resolve:ssm:/orion/db/secret-arn}}'
-        EVENT_BUS_ARN: '{{resolve:ssm:/orion/eventbridge/bus-arn}}'
-        CORS_ORIGINS: '{{resolve:ssm:/orion/cors/allowed-origins}}'
+        DB_SECRET_ARN: '{{resolve:ssm:/orion/db/secret-arn~true}}'
+        EVENT_BUS_ARN: '{{resolve:ssm:/orion/eventbridge/bus-arn~true}}'
+        CORS_ORIGINS: '{{resolve:ssm:/orion/cors/allowed-origins~true}}'
 
 Resources:
   IdentityFunctionRole:
