@@ -49,8 +49,8 @@ Parameters:
   #   /orion/lambda/security-group-id (egress-only SG)
   # Empty defaults keep local `sam local start-api` working without AWS state.
   VpcSubnetIds:
-    Type: List<AWS::EC2::Subnet::Id>
-    Description: Subnet IDs (>= 2 AZs, must include the private subnets where RDS lives) for the VPC-attached Lambdas.
+    Type: String
+    Description: Subnet IDs (>= 2 AZs, must include the private subnets where RDS lives) for the VPC-attached Lambdas (comma-separated string for parser-bug bisect).
     Default: '""'
 
   LambdaSecurityGroupId:
@@ -74,7 +74,7 @@ Globals:
         JWT_SECRET_ARN: '{{resolve:ssm:/orion/secret/jwt-arn}}'
         DB_SECRET_ARN: '{{resolve:ssm:/orion/db/secret-arn}}'
         EVENT_BUS_ARN: '{{resolve:ssm:/orion/eventbridge/bus-arn}}'
-        CORS_ORIGINS: '{{resolve:ssm:/orion/cors/allowed-origins}}'
+        CORS_ORIGINS: 'https://orion.ahincho.dev,http://localhost:3000'
 
 Resources:
   # ---------------------------------------------------------------------------
