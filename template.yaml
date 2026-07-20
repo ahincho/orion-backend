@@ -158,7 +158,7 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: POST /v1/auth/register
-      Target: !GetAtt IdentityRegisterIntegration.Id
+      Target: !GetAtt IdentityRegisterIntegration.IntegrationId
 
   IdentityLoginIntegration:
     Type: AWS::ApiGatewayV2::Integration
@@ -173,7 +173,7 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: POST /v1/auth/login
-      Target: !GetAtt IdentityLoginIntegration.Id
+      Target: !GetAtt IdentityLoginIntegration.IntegrationId
 
   IdentityGetMeIntegration:
     Type: AWS::ApiGatewayV2::Integration
@@ -188,7 +188,7 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: GET /v1/users/me
-      Target: !GetAtt IdentityGetMeIntegration.Id
+      Target: !GetAtt IdentityGetMeIntegration.IntegrationId
       AuthorizerId: !Ref ApiGatewayAuthorizer
       AuthorizationType: CUSTOM
 
@@ -205,7 +205,7 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: POST /v1/users/me/password
-      Target: !GetAtt IdentityChangePasswordIntegration.Id
+      Target: !GetAtt IdentityChangePasswordIntegration.IntegrationId
       AuthorizerId: !Ref ApiGatewayAuthorizer
       AuthorizationType: CUSTOM
 
@@ -234,7 +234,7 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: GET /v1/census/homes/unassigned
-      Target: !GetAtt CensusListUnassignedIntegration.Id
+      Target: !GetAtt CensusListUnassignedIntegration.IntegrationId
       AuthorizerId: !Ref ApiGatewayAuthorizer
       AuthorizationType: CUSTOM
 
@@ -251,7 +251,7 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: POST /v1/census/assignments
-      Target: !GetAtt CensusAssignIntegration.Id
+      Target: !GetAtt CensusAssignIntegration.IntegrationId
       AuthorizerId: !Ref ApiGatewayAuthorizer
       AuthorizationType: CUSTOM
 
