@@ -37,7 +37,7 @@ jobs:
         # succeed if every context had a dist/ tree (the deploy workflow
         # generates it). For parser-bisect purposes we only need sam validate
         # below; skip sam build here to keep the job fast.
-        run: echo 'sam build skipped: see Deploy to dev job for a real build'
+        run: echo "sam build skipped - see Deploy to dev job for a real build"
       - name: result
         if: always()
         run: |
