@@ -15,4 +15,4 @@ export * from './logger/index.js';
 export * from './cors/index.js';
 export * from './templates/index.js';
 
-export const SHARED_VERSION = '0.1.4';
+export const SHARED_VERSION = '0.1.5';
