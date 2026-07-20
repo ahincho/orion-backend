@@ -7,6 +7,11 @@
 # The root template.yaml references this stack via:
 #   AuthorizerStack: Type: AWS::CloudFormation::Stack
 #     TemplateURL: ./contexts/authorizer/template.yaml
+#
+# Phase 1 (dev): the Lambda is attached to the orion-dev VPC (private subnets
+# + Lambda security group) so subsequent contexts can reach RDS without
+# leaving the VPC. For local development the VpcSubnetIds / SG can be empty,
+# in which case SAM skips VpcConfig.
 # =============================================================================
 
 AWSTemplateFormatVersion: '2010-09-09'
@@ -21,6 +26,19 @@ Parameters:
     Type: String
     Default: dev
     AllowedValues: [dev, prod]
+  VpcSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnet IDs for VPC-attached Lambda. Empty = no VpcConfig (local dev).
+    Default: '""'
+  LambdaSecurityGroupId:
+    Type: String
+    Description: Security group ID for VPC-attached Lambda. Empty = no VpcConfig.
+    Default: ''
+
+Conditions:
+  AttachToVpc: !And
+    - !Not [!Equals [!Ref VpcSubnetIds, '""']]
+    - !Not [!Equals [!Ref LambdaSecurityGroupId, '']]
 
 Globals:
   Function:
@@ -35,6 +53,7 @@ Globals:
         LOG_LEVEL: INFO
         POWERTOOLS_SERVICE_NAME: !Sub "orion-authorizer-${Environment}"
         NODE_OPTIONS: --enable-source-maps
+        CORS_ORIGINS: '{{resolve:ssm:/orion/cors/allowed-origins}}'
 
 Resources:
   AuthorizerFunctionRole:
@@ -49,6 +68,15 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        # X-Ray write access (used because Globals.Function.Tracing is Active).
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+        # VPC-attached Lambdas need ENI creation + describe network interfaces
+        # + write CloudWatch logs from each subnet. Attached only when both
+        # VpcSubnetIds and LambdaSecurityGroupId are set.
+        - !If
+          - AttachToVpc
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+          - !Ref AWS::NoValue
       Policies:
         - PolicyName: AuthorizerSecretsRead
           PolicyDocument:
@@ -78,6 +106,12 @@ Resources:
           Fn::Sub: "orion-node-shared-layer-arn-${Environment}"
         - !ImportValue
           Fn::Sub: "orion-node-runtime-layer-arn-${Environment}"
+      VpcConfig: !If
+        - AttachToVpc
+        - SubnetIds: !Ref VpcSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
 
 Outputs:
   AuthorizerFunctionName:

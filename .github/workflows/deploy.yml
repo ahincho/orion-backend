@@ -10,8 +10,14 @@
 #   - SAM CLI install + validate + build --use-container
 #   - sam deploy --config-env <env> (idempotent, no-fail-on-empty-changeset)
 #
-# Phase 0: dev only. To add prod: a second job below + a `prod` GH
-# Environment in repo settings holding AWS_DEPLOY_ROLE_ARN_PROD.
+# Phase 1 (VPC attach): a pre-step `resolve-vpc-config` fetches the Lambda
+# subnet IDs and security group ID from SSM (published by
+# orion-infrastructure) and passes them to the reusable as
+# `parameter-overrides-json` so SAM can attach every Lambda in the nested
+# stacks to the orion-dev VPC.
+#
+# Phase 0: dev only. To add prod: a second pair of jobs below + a `prod`
+# GH Environment in repo settings holding AWS_DEPLOY_ROLE_ARN_PROD.
 # =============================================================================
 
 name: CD - Deploy
@@ -32,10 +38,10 @@ on:
       - 'contexts/**'
 
 # `id-token: write` is required at the caller side so the reusable workflow
-# can mint an OIDC JWT for the AWS role assumption. The reusable itself
-# declares its own `permissions: id-token: write`, but the CALLER must
-# also opt in (GitHub OIDC token is generated from the caller's permissions
-# context).
+# (and the resolve-vpc-config pre-step) can mint an OIDC JWT for the AWS
+# role assumption. The reusable itself declares its own
+# `permissions: id-token: write`, but the CALLER must also opt in
+# (GitHub OIDC token is generated from the caller's permissions context).
 permissions:
   contents: read
   id-token: write
@@ -45,8 +51,54 @@ concurrency:
   cancel-in-progress: false   # never cancel an in-progress deploy
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Phase 1: resolve VPC params (subnet IDs + Lambda SG) from SSM.
+  # orion-infrastructure (Terraform) publishes them via its `ssm-bootstrap`
+  # module; this job reads them and exposes a JSON object that the reusable
+  # `sam-deploy.yml` consumes via its `parameter-overrides-json` input.
+  #
+  # Resolved shape (matches root template parameter names):
+  #   { "VpcSubnetIds": ["subnet-...", "subnet-..."],
+  #     "LambdaSecurityGroupId": "sg-..." }
+  # ---------------------------------------------------------------------------
+  resolve-vpc-config:
+    name: Resolve VPC config from SSM
+    runs-on: ubuntu-latest
+    environment: dev   # shares the dev env gate with deploy-dev
+    steps:
+      - name: Configure AWS credentials (OIDC, deploy role)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Fetch VPC params from SSM and build parameter-overrides-json
+        id: vpc
+        run: |
+          set -euo pipefail
+          SUBNET_IDS=$(aws ssm get-parameter \
+            --name /orion/lambda/vpc-subnet-ids \
+            --query "Parameter.Value" --output text --region us-east-1)
+          SG_ID=$(aws ssm get-parameter \
+            --name /orion/lambda/security-group-id \
+            --query "Parameter.Value" --output text --region us-east-1)
+          if [ -z "$SUBNET_IDS" ] || [ -z "$SG_ID" ]; then
+            echo "::error::Empty SSM value(s); abort."
+            exit 1
+          fi
+          PARAM_JSON=$(jq -nc \
+            --arg subnets "$SUBNET_IDS" \
+            --arg sg "$SG_ID" \
+            '{VpcSubnetIds: ($subnets | split(",")), LambdaSecurityGroupId: $sg}')
+          echo "Resolved parameter-overrides-json: $PARAM_JSON"
+          echo "parameter-overrides-json=$PARAM_JSON" >> "$GITHUB_OUTPUT"
+
+    outputs:
+      parameter-overrides-json: ${{ steps.vpc.outputs.parameter-overrides-json }}
+
   deploy-dev:
     name: Deploy to dev
+    needs: resolve-vpc-config
     uses: spark-match/spark-match-01-devops/.github/workflows/sam-deploy.yml@main
     with:
       environment-name: dev
@@ -59,5 +111,6 @@ jobs:
       sam-cli-version: 1.151.0
       pre-build-script: build:shared
       build-layers-script: layer:build:all
+      parameter-overrides-json: ${{ needs.resolve-vpc-config.outputs.parameter-overrides-json }}
     secrets:
       AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}

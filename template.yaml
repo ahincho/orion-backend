@@ -7,6 +7,12 @@
 # Runtime: nodejs24.x (LTS Krypton, EOL Apr 2028).
 # All runtime config is sourced from SSM via {{resolve:ssm:...}} so that
 # orion-infrastructure (Terraform) is the single source of truth for ARNs.
+#
+# Phase 1 (dev): all Lambdas are deployed inside the orion-dev VPC so they
+# can reach the RDS Postgres instance over private subnets. Subnet IDs and
+# the shared Lambda security group are passed in as SAM parameters (populated
+# by deploy.yml via `aws ssm get-parameter` against the SSM parameters
+# published by orion-infrastructure).
 # =============================================================================
 
 AWSTemplateFormatVersion: '2010-09-09'
@@ -36,6 +42,22 @@ Parameters:
     Description: ARN of the ORION EventBridge bus.
     Default: ''
 
+  # Phase 1 - VPC attachment for Lambda functions.
+  # These two params are passed in by .github/workflows/deploy.yml which
+  # fetches their values from SSM:
+  #   /orion/lambda/vpc-subnet-ids    (comma-separated, ≥ 2 AZs)
+  #   /orion/lambda/security-group-id (egress-only SG)
+  # Empty defaults keep local `sam local start-api` working without AWS state.
+  VpcSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnet IDs (≥ 2 AZs, must include the private subnets where RDS lives) for the VPC-attached Lambdas.
+    Default: '""'
+
+  LambdaSecurityGroupId:
+    Type: String
+    Description: Security Group ID attached to all VPC Lambdas (must allow egress to RDS port 5432 if RDS is reachable).
+    Default: ''
+
 Globals:
   Function:
     Runtime: nodejs24.x
@@ -52,6 +74,7 @@ Globals:
         JWT_SECRET_ARN: '{{resolve:ssm:/orion/secret/jwt-arn}}'
         DB_SECRET_ARN: '{{resolve:ssm:/orion/db/secret-arn}}'
         EVENT_BUS_ARN: '{{resolve:ssm:/orion/eventbridge/bus-arn}}'
+        CORS_ORIGINS: '{{resolve:ssm:/orion/cors/allowed-origins}}'
 
 Resources:
   # ---------------------------------------------------------------------------
@@ -90,6 +113,8 @@ Resources:
       Parameters:
         HttpApiId: !Ref HttpApi
         Environment: !Ref Environment
+        VpcSubnetIds: !Ref VpcSubnetIds
+        LambdaSecurityGroupId: !Ref LambdaSecurityGroupId
 
   ApiGatewayAuthorizer:
     Type: AWS::ApiGatewayV2::Authorizer
@@ -112,6 +137,42 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
+
+  # ---------------------------------------------------------------------------
+  # Identity bounded context (nested stack) - users + JWT issuance
+  #   POST /v1/auth/register            (public)
+  #   POST /v1/auth/login               (public)
+  #   GET  /v1/users/me                 (JWT)
+  #   POST /v1/users/me/password        (JWT)
+  # All route definitions live in contexts/identity/template.yaml.
+  # ---------------------------------------------------------------------------
+  IdentityStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./contexts/identity/template.yaml
+      Parameters:
+        HttpApiId: !Ref HttpApi
+        ApiGatewayAuthorizerId: !Ref ApiGatewayAuthorizer
+        Environment: !Ref Environment
+        VpcSubnetIds: !Ref VpcSubnetIds
+        LambdaSecurityGroupId: !Ref LambdaSecurityGroupId
+
+  # ---------------------------------------------------------------------------
+  # Census bounded context (nested stack) - Asignacion de Censos
+  #   GET  /v1/census/homes/unassigned  (JWT)
+  #   POST /v1/census/assignments      (JWT)
+  # All route definitions live in contexts/census/template.yaml.
+  # ---------------------------------------------------------------------------
+  CensusStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./contexts/census/template.yaml
+      Parameters:
+        HttpApiId: !Ref HttpApi
+        ApiGatewayAuthorizerId: !Ref ApiGatewayAuthorizer
+        Environment: !Ref Environment
+        VpcSubnetIds: !Ref VpcSubnetIds
+        LambdaSecurityGroupId: !Ref LambdaSecurityGroupId
 
   # ---------------------------------------------------------------------------
   # Lambda Layers - shared kernel + runtime dependencies
