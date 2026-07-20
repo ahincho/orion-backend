@@ -1,16 +1,16 @@
 # =============================================================================
 # CD - Deploy ORION backend via SAM
 # =============================================================================
-# Triggered on push to main. Uses aws/aws-actions-github-actions-for-sam@v1
-# (same action consumed by spark-match-03-backend) for build + deploy. We
-# sidestep the SAM CLI 1.151.x `sam validate` regression that the
-# spark-match-01-devops reusable sam-deploy.yml@main still triggers.
+# Triggered on push to main. Installs SAM CLI via aws-actions/setup-sam,
+# then runs sam build + sam deploy directly via bash (skipping the broken
+# `sam validate` step that the spark-match-01-devops reusable sam-deploy.yml
+# triggers under SAM CLI 1.145/1.151).
 #
 # Two-job pipeline:
 #   1. resolve-vpc-config  -> reads /orion/lambda/{vpc-subnet-ids,security-group-id}
 #                              from SSM, emits a SAM CLI --parameter-overrides string
 #                              of the form "VpcSubnetIds=subnet-X,subnet-Y LambdaSecurityGroupId=sg-Z".
-#   2. deploy-dev          -> build + deploy via aws/aws-actions-github-actions-for-sam@v1.
+#   2. deploy-dev          -> build + deploy via SAM CLI.
 #
 # Phase 0: dev only. To add prod: a second pair of jobs + a `prod` GH
 # Environment in repo settings holding AWS_DEPLOY_ROLE_ARN_PROD.
@@ -46,7 +46,7 @@ jobs:
   # Phase 1: resolve VPC params (subnet IDs + Lambda SG) from SSM.
   # orion-infrastructure publishes them via its `ssm-bootstrap` module;
   # this job reads them and exposes a SAM-CLI-friendly string that the SAM
-  # action consumes as `--parameter-overrides`.
+  # CLI consumes as `--parameter-overrides`.
   #
   # Output shape (raw, consumed by `sam deploy --parameter-overrides ...`):
   #   VpcSubnetIds=subnet-X,subnet-Y LambdaSecurityGroupId=sg-Z
@@ -113,20 +113,23 @@ jobs:
       - name: Build Lambda Layers
         run: npm run layer:build:all
 
-      - name: SAM Build
-        uses: aws/aws-actions-github-actions-for-sam@v1
+      - name: Setup SAM CLI
+        uses: aws-actions/setup-sam@v3
         with:
-          use-container: false
+          version: 1.145.0
+
+      - name: SAM Build
+        run: sam build --template template.yaml --use-container
 
       - name: SAM Deploy
-        uses: aws/aws-actions-github-actions-for-sam@v1
-        with:
-          use-container: false
-          command: deploy
-          args: >-
-            --config-env dev
-            --no-fail-on-empty-changeset
-            --no-disable-rollback
-            --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND
-            --region us-east-1
-            --parameter-overrides ${{ needs.resolve-vpc-config.outputs.parameter-overrides }}
+        run: |
+          set -euo pipefail
+          DEPLOY_ARGS="--config-env dev \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
+            --region us-east-1 \
+            --parameter-overrides ${{ needs.resolve-vpc-config.outputs.parameter-overrides }}"
+          echo "Running: sam deploy $DEPLOY_ARGS"
+          # shellcheck disable=SC2086
+          sam deploy $DEPLOY_ARGS
