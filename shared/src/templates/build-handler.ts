@@ -17,7 +17,6 @@
 import middy from '@middy/core';
 import httpErrorHandler from '@middy/http-error-handler';
 import httpHeaderNormalizer from '@middy/http-header-normalizer';
-import jsonBodyParser from '@middy/http-json-body-parser';
 import type { Logger } from '@aws-lambda-powertools/logger';
 import type { Tracer } from '@aws-lambda-powertools/tracer';
 import { injectLambdaContext } from '@aws-lambda-powertools/logger/middleware';
@@ -165,7 +164,6 @@ export function buildHandler<TInput, TOutput>(
 
   const pipeline = middy<APIGatewayProxyEventV2, APIGatewayProxyResultV2, Error, never>(baseHandler)
     .use(httpHeaderNormalizer())
-    .use(jsonBodyParser())
     .use(injectLambdaContext(config.logger, { clearState: true }))
     .use(captureLambdaHandler(config.tracer));
 

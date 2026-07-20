@@ -40,10 +40,20 @@ async function loadOrigins(): Promise<string[]> {
   }
   const ssm = getSsm();
   const raw = await ssm.getRequiredString(SSM_CORS_KEY);
-  cachedOrigins = raw
-    .split(',')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+  // SSM value is a JSON-encoded list (per orion-infrastructure
+  // modules/ssm-bootstrap module: "CORS allowed origins se almacena como
+  // JSON-encoded list (no CSV) para consumir directo desde el Lambda con
+  // JSON.parse"). Parsing as JSON also rejects accidental CSV input that
+  // would otherwise produce a one-element list whose single entry is the
+  // whole CSV, which the inlineCorsMiddleware would then put verbatim
+  // into the Access-Control-Allow-Origin header.
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed) || !parsed.every((s) => typeof s === 'string')) {
+    throw new Error(
+      `cors-origins: SSM parameter ${SSM_CORS_KEY} must be a JSON array of strings`,
+    );
+  }
+  cachedOrigins = parsed as string[];
   cachedAt = Date.now();
   return cachedOrigins;
 }
