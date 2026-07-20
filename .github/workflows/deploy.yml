@@ -209,4 +209,3 @@ jobs:
               --query "StackEvents[?contains(ResourceStatus, 'FAILED')].[LogicalResourceId,ResourceType,ResourceStatusReason]" \
               --output text
           done
-
