@@ -162,7 +162,7 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: POST /v1/auth/register
-      Target: !GetAtt IdentityRegisterIntegration.IntegrationId
+      Target: !Sub "integrations/${IdentityRegisterIntegration.IntegrationId}"
 
   IdentityLoginIntegration:
     Type: AWS::ApiGatewayV2::Integration
@@ -177,7 +177,7 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: POST /v1/auth/login
-      Target: !GetAtt IdentityLoginIntegration.IntegrationId
+      Target: !Sub "integrations/${IdentityLoginIntegration.IntegrationId}"
 
   IdentityGetMeIntegration:
     Type: AWS::ApiGatewayV2::Integration
@@ -192,7 +192,7 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: GET /v1/users/me
-      Target: !GetAtt IdentityGetMeIntegration.IntegrationId
+      Target: !Sub "integrations/${IdentityGetMeIntegration.IntegrationId}"
       AuthorizerId: !Ref ApiGatewayAuthorizer
       AuthorizationType: CUSTOM
 
@@ -209,7 +209,7 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: POST /v1/users/me/password
-      Target: !GetAtt IdentityChangePasswordIntegration.IntegrationId
+      Target: !Sub "integrations/${IdentityChangePasswordIntegration.IntegrationId}"
       AuthorizerId: !Ref ApiGatewayAuthorizer
       AuthorizationType: CUSTOM
 
@@ -240,7 +240,7 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: GET /v1/census/homes/unassigned
-      Target: !GetAtt CensusListUnassignedIntegration.IntegrationId
+      Target: !Sub "integrations/${CensusListUnassignedIntegration.IntegrationId}"
       AuthorizerId: !Ref ApiGatewayAuthorizer
       AuthorizationType: CUSTOM
 
@@ -257,9 +257,64 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: POST /v1/census/assignments
-      Target: !GetAtt CensusAssignIntegration.IntegrationId
+      Target: !Sub "integrations/${CensusAssignIntegration.IntegrationId}"
       AuthorizerId: !Ref ApiGatewayAuthorizer
       AuthorizationType: CUSTOM
+
+  # ---------------------------------------------------------------------------
+  # Lambda invoke permissions - allow API Gateway (HTTP API) to invoke each
+  # AWS_PROXY-integrated function. Raw AWS::ApiGatewayV2::Integration does NOT
+  # auto-create these (unlike SAM `Events`), so without them every route
+  # returns 500 at runtime. The authorizer uses AuthorizerCredentialsArn
+  # instead and therefore needs no permission here.
+  # ---------------------------------------------------------------------------
+  IdentityRegisterPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt IdentityStack.Outputs.IdentityRegisterFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
+
+  IdentityLoginPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt IdentityStack.Outputs.IdentityLoginFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
+
+  IdentityGetMePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt IdentityStack.Outputs.IdentityGetMeFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
+
+  IdentityChangePasswordPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt IdentityStack.Outputs.IdentityChangePasswordFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
+
+  CensusListUnassignedPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt CensusStack.Outputs.CensusListUnassignedFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
+
+  CensusAssignPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt CensusStack.Outputs.CensusAssignFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
 
   # ---------------------------------------------------------------------------
   # Lambda Layers - shared kernel + runtime dependencies

@@ -128,8 +128,8 @@ Outputs:
       Name: !Sub "orion-authorizer-function-arn-${Environment}"
 
   AuthorizerFunctionInvokeArn:
-    Description: Invoke ARN (with alias suffix) for API Gateway.
-    Value: !Sub "${AuthorizerFunction.Arn}"
+    Description: API Gateway Lambda invocation ARN for the authorizer.
+    Value: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthorizerFunction.Arn}/invocations"
     Export:
       Name: !Sub "orion-authorizer-invoke-arn-${Environment}"
 
