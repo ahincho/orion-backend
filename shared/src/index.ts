@@ -14,3 +14,5 @@ export * from './infra/index.js';
 export * from './logger/index.js';
 export * from './cors/index.js';
 export * from './templates/index.js';
+
+export const SHARED_VERSION = '0.1.0';
