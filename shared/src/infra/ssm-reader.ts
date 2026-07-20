@@ -53,7 +53,12 @@ export function createSsmReader(config: SsmReaderConfig = {}): SsmReader {
     const cached = getCached(name);
     if (cached !== undefined) return cached;
 
-    const result = await client.send(new GetParameterCommand({ Name: name }));
+    // WithDecryption must be EXPLICITLY true. Despite AWS SDK v3 docs saying
+    // the default is true, in practice (verified with @aws-sdk/client-ssm
+    // v3.1090.0) omitting it returns the ciphertext for SecureString
+    // parameters. The Lambda role still needs kms:Decrypt on the SSM key
+    // (alias/aws/ssm) for decryption to actually happen.
+    const result = await client.send(new GetParameterCommand({ Name: name, WithDecryption: true }));
     const value = result.Parameter?.Value;
     if (value !== undefined) {
       setCached(name, value);
