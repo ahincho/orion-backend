@@ -8,6 +8,9 @@
 #   - IdentityChangePasswordFunction: POST /v1/users/me/password  (auth required)
 #
 # All protected routes use the orion-jwt-authorizer created in the root stack.
+#
+# Phase 1 (dev): all 4 Lambdas are attached to the orion-dev VPC so they
+# can reach the RDS Postgres cluster on private subnets.
 # =============================================================================
 
 AWSTemplateFormatVersion: '2010-09-09'
@@ -25,6 +28,19 @@ Parameters:
     Type: String
     Default: dev
     AllowedValues: [dev, prod]
+  VpcSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnet IDs for VPC-attached Lambdas (private subnets where RDS lives).
+    Default: '""'
+  LambdaSecurityGroupId:
+    Type: String
+    Description: Security group ID attached to all Lambdas in this stack.
+    Default: ''
+
+Conditions:
+  AttachToVpc: !And
+    - !Not [!Equals [!Ref VpcSubnetIds, '""']]
+    - !Not [!Equals [!Ref LambdaSecurityGroupId, '']]
 
 Globals:
   Function:
@@ -46,6 +62,7 @@ Globals:
         NODE_OPTIONS: --enable-source-maps
         DB_SECRET_ARN: '{{resolve:ssm:/orion/db/secret-arn}}'
         EVENT_BUS_ARN: '{{resolve:ssm:/orion/eventbridge/bus-arn}}'
+        CORS_ORIGINS: '{{resolve:ssm:/orion/cors/allowed-origins}}'
 
 Resources:
   # Shared IAM role for all identity Lambdas (DB + EventBridge + SSM + Secrets access)
@@ -61,6 +78,13 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+        # ENI / describe-network-interfaces / CW-from-VPC logs. Only attached
+        # when the stack is given VPC params (i.e. real AWS deploy, not local).
+        - !If
+          - AttachToVpc
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+          - !Ref AWS::NoValue
       Policies:
         - PolicyName: IdentityAccess
           PolicyDocument:
@@ -91,6 +115,12 @@ Resources:
       Handler: handlers/register.handler
       CodeUri: ./
       Role: !GetAtt IdentityFunctionRole.Arn
+      VpcConfig: !If
+        - AttachToVpc
+        - SubnetIds: !Ref VpcSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Events:
         RegisterApi:
           Type: HttpApi
@@ -109,6 +139,12 @@ Resources:
       Handler: handlers/login.handler
       CodeUri: ./
       Role: !GetAtt IdentityFunctionRole.Arn
+      VpcConfig: !If
+        - AttachToVpc
+        - SubnetIds: !Ref VpcSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Events:
         LoginApi:
           Type: HttpApi
@@ -127,6 +163,12 @@ Resources:
       Handler: handlers/get-me.handler
       CodeUri: ./
       Role: !GetAtt IdentityFunctionRole.Arn
+      VpcConfig: !If
+        - AttachToVpc
+        - SubnetIds: !Ref VpcSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Events:
         GetMeApi:
           Type: HttpApi
@@ -146,6 +188,12 @@ Resources:
       Handler: handlers/change-password.handler
       CodeUri: ./
       Role: !GetAtt IdentityFunctionRole.Arn
+      VpcConfig: !If
+        - AttachToVpc
+        - SubnetIds: !Ref VpcSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Events:
         ChangePasswordApi:
           Type: HttpApi
