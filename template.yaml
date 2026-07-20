@@ -139,63 +139,6 @@ Resources:
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
 
   # ---------------------------------------------------------------------------
-  # Identity bounded context (nested stack) - users + JWT issuance
-  #   POST /v1/auth/register            (public)
-  #   POST /v1/auth/login               (public)
-  #   GET  /v1/users/me                 (JWT)
-  #   POST /v1/users/me/password        (JWT)
-  # All route definitions live in contexts/identity/template.yaml.
-  # ---------------------------------------------------------------------------
-  IdentityStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: ./contexts/identity/template.yaml
-      Parameters:
-        HttpApiId: !Ref HttpApi
-        ApiGatewayAuthorizerId: !Ref ApiGatewayAuthorizer
-        Environment: !Ref Environment
-        VpcSubnetIds: !Ref VpcSubnetIds
-        LambdaSecurityGroupId: !Ref LambdaSecurityGroupId
-
-  # ---------------------------------------------------------------------------
-  # Census bounded context (nested stack) - Asignacion de Censos
-  #   GET  /v1/census/homes/unassigned  (JWT)
-  #   POST /v1/census/assignments      (JWT)
-  # All route definitions live in contexts/census/template.yaml.
-  # ---------------------------------------------------------------------------
-  CensusStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: ./contexts/census/template.yaml
-      Parameters:
-        HttpApiId: !Ref HttpApi
-        ApiGatewayAuthorizerId: !Ref ApiGatewayAuthorizer
-        Environment: !Ref Environment
-        VpcSubnetIds: !Ref VpcSubnetIds
-        LambdaSecurityGroupId: !Ref LambdaSecurityGroupId
-
-  # ---------------------------------------------------------------------------
-  # Lambda Layers - shared kernel + runtime dependencies
-  # ---------------------------------------------------------------------------
-  NodeSharedLayer:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      LayerName: !Sub "orion-node-shared-${Environment}"
-      Description: Compiled @orion/shared workspace (built via npm run layer:build:all).
-      ContentUri: ./layers/node-shared/
-      CompatibleRuntimes: [nodejs24.x]
-      RetentionPolicy: Retain
-
-  NodeRuntimeLayer:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      LayerName: !Sub "orion-node-runtime-${Environment}"
-      Description: Runtime dependencies (jose, zod, middy, kysely, pg, powertools).
-      ContentUri: ./layers/node-runtime/
-      CompatibleRuntimes: [nodejs24.x]
-      RetentionPolicy: Retain
-
-  # ---------------------------------------------------------------------------
   # Application-wide log group
   # ---------------------------------------------------------------------------
   ApplicationLogGroup:
