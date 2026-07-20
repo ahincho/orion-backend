@@ -13,6 +13,14 @@
 # the shared Lambda security group are passed in as SAM parameters (populated
 # by deploy.yml via `aws ssm get-parameter` against the SSM parameters
 # published by orion-infrastructure).
+#
+# Architecture note (Phase 1 SAM quirk):
+#   SAM CLI forbids `Events: ApiId: !Ref HttpApiId` in nested stacks when
+#   HttpApiId is a string parameter -- it requires an in-template
+#   `AWS::Serverless::HttpApi` resource reference. We therefore declare the
+#   `AWS::ApiGatewayV2::Integration` + `AWS::ApiGatewayV2::Route` pairs in THIS
+#   template, pointing at the InvokeArns exported by each nested stack.
+#   Nested stacks only own their Lambda + IAM role + output ARNs.
 # =============================================================================
 
 AWSTemplateFormatVersion: '2010-09-09'
@@ -43,19 +51,14 @@ Parameters:
     Default: ''
 
   # Phase 1 - VPC attachment for Lambda functions.
-  # These two params are passed in by .github/workflows/deploy.yml which
-  # fetches their values from SSM:
-  #   /orion/lambda/vpc-subnet-ids    (comma-separated, >= 2 AZs)
-  #   /orion/lambda/security-group-id (egress-only SG)
-  # Empty defaults keep local `sam local start-api` working without AWS state.
   VpcSubnetIds:
-    Type: List<AWS::EC2::Subnet::Id>
-    Description: Subnet IDs (>= 2 AZs, must include the private subnets where RDS lives) for the VPC-attached Lambdas.
+    Type: String
+    Description: 'Comma-separated subnet IDs (>= 2 AZs, private subnets where RDS lives) for VPC-attached Lambdas. Use ''""'' for local dev.'
     Default: '""'
 
   LambdaSecurityGroupId:
     Type: String
-    Description: Security Group ID attached to all VPC Lambdas (must allow egress to RDS port 5432 if RDS is reachable).
+    Description: Security Group ID attached to all VPC Lambdas (must allow egress to RDS port 5432 if RDS is reachable). Empty = local dev.
     Default: ''
 
 Globals:
@@ -87,7 +90,7 @@ Resources:
       ProtocolType: HTTP
       Description: ORION backend public HTTP API.
       CorsConfiguration:
-        AllowOrigins: ['*']   # TODO Phase 2: replace with whitelist from SSM /orion/cors/allowed-origins
+        AllowOrigins: ['*']
         AllowMethods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
         AllowHeaders: [Content-Type, Authorization, X-Correlation-Id]
         ExposeHeaders: [X-Correlation-Id]
@@ -103,15 +106,14 @@ Resources:
 
   # ---------------------------------------------------------------------------
   # Lambda Authorizer (REQUEST type) - validates JWTs signed with our HS256 secret
-  # Defined here so all nested context stacks can reference it via parameter.
-  # Actual Lambda function lives in contexts/authorizer/ (nested stack).
+  # The authorizer Lambda lives in a nested stack (only the stack's InvokeArn is
+  # referenced here so the Authorizer can be wired up).
   # ---------------------------------------------------------------------------
   AuthorizerStack:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: ./contexts/authorizer/template.yaml
       Parameters:
-        HttpApiId: !Ref HttpApi
         Environment: !Ref Environment
         VpcSubnetIds: !Ref VpcSubnetIds
         LambdaSecurityGroupId: !Ref LambdaSecurityGroupId
@@ -130,49 +132,128 @@ Resources:
       AuthorizerPayloadFormatVersion: '2.0'
       EnableSimpleResponses: true
 
-  AuthorizerInvokePermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !GetAtt AuthorizerStack.Outputs.AuthorizerFunctionName
-      Action: lambda:InvokeFunction
-      Principal: apigateway.amazonaws.com
-      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
-
   # ---------------------------------------------------------------------------
   # Identity bounded context (nested stack) - users + JWT issuance
-  #   POST /v1/auth/register            (public)
-  #   POST /v1/auth/login               (public)
-  #   GET  /v1/users/me                 (JWT)
-  #   POST /v1/users/me/password        (JWT)
-  # All route definitions live in contexts/identity/template.yaml.
+  # Routes are wired here in root via raw AWS::ApiGatewayV2::Route resources.
   # ---------------------------------------------------------------------------
   IdentityStack:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: ./contexts/identity/template.yaml
       Parameters:
-        HttpApiId: !Ref HttpApi
-        ApiGatewayAuthorizerId: !Ref ApiGatewayAuthorizer
         Environment: !Ref Environment
         VpcSubnetIds: !Ref VpcSubnetIds
         LambdaSecurityGroupId: !Ref LambdaSecurityGroupId
 
+  IdentityRegisterIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt IdentityStack.Outputs.IdentityRegisterFunctionArn
+      PayloadFormatVersion: '2.0'
+
+  IdentityRegisterRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: POST /v1/auth/register
+      Target: !GetAtt IdentityRegisterIntegration.Id
+
+  IdentityLoginIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt IdentityStack.Outputs.IdentityLoginFunctionArn
+      PayloadFormatVersion: '2.0'
+
+  IdentityLoginRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: POST /v1/auth/login
+      Target: !GetAtt IdentityLoginIntegration.Id
+
+  IdentityGetMeIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt IdentityStack.Outputs.IdentityGetMeFunctionArn
+      PayloadFormatVersion: '2.0'
+
+  IdentityGetMeRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: GET /v1/users/me
+      Target: !GetAtt IdentityGetMeIntegration.Id
+      AuthorizerId: !Ref ApiGatewayAuthorizer
+      AuthorizationType: CUSTOM
+
+  IdentityChangePasswordIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt IdentityStack.Outputs.IdentityChangePasswordFunctionArn
+      PayloadFormatVersion: '2.0'
+
+  IdentityChangePasswordRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: POST /v1/users/me/password
+      Target: !GetAtt IdentityChangePasswordIntegration.Id
+      AuthorizerId: !Ref ApiGatewayAuthorizer
+      AuthorizationType: CUSTOM
+
   # ---------------------------------------------------------------------------
   # Census bounded context (nested stack) - Asignacion de Censos
-  #   GET  /v1/census/homes/unassigned  (JWT)
-  #   POST /v1/census/assignments      (JWT)
-  # All route definitions live in contexts/census/template.yaml.
   # ---------------------------------------------------------------------------
   CensusStack:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: ./contexts/census/template.yaml
       Parameters:
-        HttpApiId: !Ref HttpApi
-        ApiGatewayAuthorizerId: !Ref ApiGatewayAuthorizer
         Environment: !Ref Environment
         VpcSubnetIds: !Ref VpcSubnetIds
         LambdaSecurityGroupId: !Ref LambdaSecurityGroupId
+
+  CensusListUnassignedIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt CensusStack.Outputs.CensusListUnassignedFunctionArn
+      PayloadFormatVersion: '2.0'
+
+  CensusListUnassignedRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: GET /v1/census/homes/unassigned
+      Target: !GetAtt CensusListUnassignedIntegration.Id
+      AuthorizerId: !Ref ApiGatewayAuthorizer
+      AuthorizationType: CUSTOM
+
+  CensusAssignIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt CensusStack.Outputs.CensusAssignFunctionArn
+      PayloadFormatVersion: '2.0'
+
+  CensusAssignRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: POST /v1/census/assignments
+      Target: !GetAtt CensusAssignIntegration.Id
+      AuthorizerId: !Ref ApiGatewayAuthorizer
+      AuthorizationType: CUSTOM
 
   # ---------------------------------------------------------------------------
   # Lambda Layers - shared kernel + runtime dependencies
@@ -216,12 +297,6 @@ Outputs:
     Value: !Ref HttpApi
     Export:
       Name: !Sub "orion-http-api-id-${Environment}"
-
-  ApiGatewayAuthorizerId:
-    Description: Authorizer ID (attach to routes in nested context stacks).
-    Value: !Ref ApiGatewayAuthorizer
-    Export:
-      Name: !Sub "orion-authorizer-id-${Environment}"
 
   NodeSharedLayerArn:
     Description: ARN of the shared kernel Lambda Layer.

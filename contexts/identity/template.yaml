@@ -1,40 +1,19 @@
-# =============================================================================
-# Identity context - SAM nested stack
-# =============================================================================
-# 4 Lambdas:
-#   - IdentityRegisterFunction:   POST /v1/auth/register
-#   - IdentityLoginFunction:      POST /v1/auth/login
-#   - IdentityGetMeFunction:      GET  /v1/users/me          (auth required)
-#   - IdentityChangePasswordFunction: POST /v1/users/me/password  (auth required)
-#
-# All protected routes use the orion-jwt-authorizer created in the root stack.
-#
-# Phase 1 (dev): all 4 Lambdas are attached to the orion-dev VPC so they
-# can reach the RDS Postgres cluster on private subnets.
-# =============================================================================
-
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: 'ORION identity bounded context: users, sessions, login, register.'
 
 Parameters:
-  HttpApiId:
-    Type: String
-    Description: HTTP API ID from the root stack.
-  ApiGatewayAuthorizerId:
-    Type: String
-    Description: ID of the Lambda Authorizer created in the root stack.
   Environment:
     Type: String
     Default: dev
     AllowedValues: [dev, prod]
   VpcSubnetIds:
-    Type: List<AWS::EC2::Subnet::Id>
-    Description: Subnet IDs for VPC-attached Lambdas (private subnets where RDS lives).
+    Type: String
+    Description: Comma-separated subnet IDs for VPC-attached Lambdas (private subnets where RDS lives). Empty = no VPC attachment (local).
     Default: '""'
   LambdaSecurityGroupId:
     Type: String
-    Description: Security group ID attached to all Lambdas in this stack.
+    Description: Security group ID attached to all Lambdas in this stack. Empty = no VPC attachment (local).
     Default: ''
 
 Conditions:
@@ -65,7 +44,6 @@ Globals:
         CORS_ORIGINS: '{{resolve:ssm:/orion/cors/allowed-origins}}'
 
 Resources:
-  # Shared IAM role for all identity Lambdas (DB + EventBridge + SSM + Secrets access)
   IdentityFunctionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -79,8 +57,6 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
-        # ENI / describe-network-interfaces / CW-from-VPC logs. Only attached
-        # when the stack is given VPC params (i.e. real AWS deploy, not local).
         - !If
           - AttachToVpc
           - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
@@ -105,9 +81,6 @@ Resources:
                   - events:PutEvents
                 Resource: '*'
 
-  # ---------------------------------------------------------------------------
-  # POST /v1/auth/register (no auth)
-  # ---------------------------------------------------------------------------
   IdentityRegisterFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -121,17 +94,7 @@ Resources:
           SecurityGroupIds:
             - !Ref LambdaSecurityGroupId
         - !Ref AWS::NoValue
-      Events:
-        RegisterApi:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref HttpApiId
-            Path: /v1/auth/register
-            Method: POST
 
-  # ---------------------------------------------------------------------------
-  # POST /v1/auth/login (no auth)
-  # ---------------------------------------------------------------------------
   IdentityLoginFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -145,17 +108,7 @@ Resources:
           SecurityGroupIds:
             - !Ref LambdaSecurityGroupId
         - !Ref AWS::NoValue
-      Events:
-        LoginApi:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref HttpApiId
-            Path: /v1/auth/login
-            Method: POST
 
-  # ---------------------------------------------------------------------------
-  # GET /v1/users/me (auth required)
-  # ---------------------------------------------------------------------------
   IdentityGetMeFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -169,18 +122,7 @@ Resources:
           SecurityGroupIds:
             - !Ref LambdaSecurityGroupId
         - !Ref AWS::NoValue
-      Events:
-        GetMeApi:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref HttpApiId
-            Path: /v1/users/me
-            Method: GET
-            Authorizer: !Ref ApiGatewayAuthorizerId
 
-  # ---------------------------------------------------------------------------
-  # POST /v1/users/me/password (auth required)
-  # ---------------------------------------------------------------------------
   IdentityChangePasswordFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -194,32 +136,21 @@ Resources:
           SecurityGroupIds:
             - !Ref LambdaSecurityGroupId
         - !Ref AWS::NoValue
-      Events:
-        ChangePasswordApi:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref HttpApiId
-            Path: /v1/users/me/password
-            Method: POST
-            Authorizer: !Ref ApiGatewayAuthorizerId
 
 Outputs:
-  IdentityRegisterFunctionName:
-    Value: !Ref IdentityRegisterFunction
+  IdentityRegisterFunctionArn:
+    Value: !GetAtt IdentityRegisterFunction.Arn
     Export:
-      Name: !Sub 'orion-identity-register-name-${Environment}'
-
-  IdentityLoginFunctionName:
-    Value: !Ref IdentityLoginFunction
+      Name: !Sub 'orion-identity-register-arn-${Environment}'
+  IdentityLoginFunctionArn:
+    Value: !GetAtt IdentityLoginFunction.Arn
     Export:
-      Name: !Sub 'orion-identity-login-name-${Environment}'
-
-  IdentityGetMeFunctionName:
-    Value: !Ref IdentityGetMeFunction
+      Name: !Sub 'orion-identity-login-arn-${Environment}'
+  IdentityGetMeFunctionArn:
+    Value: !GetAtt IdentityGetMeFunction.Arn
     Export:
-      Name: !Sub 'orion-identity-get-me-name-${Environment}'
-
-  IdentityChangePasswordFunctionName:
-    Value: !Ref IdentityChangePasswordFunction
+      Name: !Sub 'orion-identity-get-me-arn-${Environment}'
+  IdentityChangePasswordFunctionArn:
+    Value: !GetAtt IdentityChangePasswordFunction.Arn
     Export:
-      Name: !Sub 'orion-identity-change-password-name-${Environment}'
+      Name: !Sub 'orion-identity-change-password-arn-${Environment}'

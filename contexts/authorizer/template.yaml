@@ -19,9 +19,6 @@ Transform: AWS::Serverless-2016-10-31
 Description: ORION Lambda Authorizer (JWT HS256 validation).
 
 Parameters:
-  HttpApiId:
-    Type: String
-    Description: HTTP API ID from the root stack.
   Environment:
     Type: String
     Default: dev
