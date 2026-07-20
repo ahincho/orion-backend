@@ -25,9 +25,22 @@ rm -f "$LAYER_ZIP"
 echo ">> Creating layer structure (nodejs/)..."
 mkdir -p "$LAYER_DIR"
 
+echo ">> Scaffolding layer package.json (only deps, no scripts)..."
+# npm v10+ refuses `npm install --prefix X` when X has no package.json.
+# We pass the real dependency list here so the layer's package.json is
+# authoritative; we drop scripts (Layer zip doesn't need to run them).
+node -e "
+const fs = require('fs');
+const src = JSON.parse(fs.readFileSync('$SCRIPT_DIR/package.json', 'utf8'));
+const out = { name: 'orion-node-runtime-layer', version: '0.0.0',
+              description: 'ORION runtime dependencies Lambda Layer',
+              dependencies: src.dependencies || {} };
+fs.writeFileSync('$LAYER_DIR/package.json', JSON.stringify(out, null, 2) + '\n');
+"
+
 echo ">> Installing production dependencies..."
-# --omit=dev excludes devDependencies. We pass --prefix so npm installs
-# inside ./nodejs/ rather than the current dir.
+# --omit=dev excludes devDependencies. --prefix so npm installs inside
+# ./nodejs/ rather than the current dir.
 npm install --omit=dev --omit=optional --prefix "$LAYER_DIR" --no-audit --no-fund
 
 echo ">> Pruning unnecessary files to reduce layer size..."
