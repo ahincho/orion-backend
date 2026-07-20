@@ -108,7 +108,7 @@ jobs:
       sam-config-env: default
       s3-bucket: orion-sam-artifacts-dev
       node-version: '24'
-      sam-cli-version: 1.151.0
+      sam-cli-version: 1.145.0
       pre-build-script: build:shared
       build-layers-script: layer:build:all
       parameter-overrides-json: ${{ needs.resolve-vpc-config.outputs.parameter-overrides-json }}
