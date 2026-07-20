@@ -47,7 +47,7 @@ concurrency:
 jobs:
   deploy-dev:
     name: Deploy to dev
-    uses: spark-match/spark-match-01-devops/.github/workflows/sam-deploy.yml@dev
+    uses: spark-match/spark-match-01-devops/.github/workflows/sam-deploy.yml@main
     with:
       environment-name: dev
       aws-region: us-east-1
