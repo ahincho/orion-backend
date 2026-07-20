@@ -26,12 +26,19 @@ jobs:
       - name: cat template.yaml (sha256)
         run: sha256sum template.yaml
       - name: sam validate --debug
-        run: set -o pipefail; sam validate --debug --template template.yaml --lint 2>&1 | tee validate.log
+        # SAM CLI 1.137-1.163 bug: parses samconfig.toml as YAML. Bypass with
+        # --config-file pointing outside the repo. See PR #62.
+        run: |
+          set -o pipefail
+          echo 'version = 0.1' > /tmp/samconfig-bypass.toml
+          sam validate --debug --template template.yaml --lint --config-file /tmp/samconfig-bypass.toml 2>&1 | tee validate.log
       - name: sam build --debug
-        run: set -o pipefail; sam build --debug --template template.yaml 2>&1 | tee build.log
+        run: |
+          set -o pipefail
+          echo 'version = 0.1' > /tmp/samconfig-bypass.toml
+          sam build --debug --template template.yaml --config-file /tmp/samconfig-bypass.toml 2>&1 | tee build.log
       - name: result
         if: always()
         run: |
           grep -E 'Unexpected character|Linting complete|0 lint|template is valid' validate.log build.log || true
-          # fail if any of these strings appear
           if grep -q 'Unexpected character' validate.log build.log; then exit 1; fi
