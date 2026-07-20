@@ -38,6 +38,13 @@ export async function getDbConnection(): Promise<Kysely<Database>> {
     database: creds.database,
     user: creds.username,
     password: creds.password,
+    // RDS parameter group has rds.force_ssl=1 and ssl=1; without ssl, the
+    // server returns "no pg_hba.conf entry for host ..., no encryption".
+    // ssl: true uses default rejectUnauthorized: false which is fine for
+    // dev (RDS CA is bundled in node-postgres via the standard CA store).
+    // For prod, consider ssl: { rejectUnauthorized: true, ca: ... } with
+    // the RDS CA bundle pinned.
+    ssl: true,
     max: 5,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
