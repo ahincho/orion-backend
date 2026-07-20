@@ -26,6 +26,12 @@ jobs:
       - name: cat template.yaml (sha256)
         run: sha256sum template.yaml
       - name: sam validate --debug
-        run: sam validate --debug --template template.yaml --lint 2>&1 || echo "VALIDATE_FAIL"
+        run: set -o pipefail; sam validate --debug --template template.yaml --lint 2>&1 | tee validate.log
       - name: sam build --debug
-        run: sam build --debug --template template.yaml 2>&1 || echo "BUILD_FAIL"
+        run: set -o pipefail; sam build --debug --template template.yaml 2>&1 | tee build.log
+      - name: result
+        if: always()
+        run: |
+          grep -E 'Unexpected character|Linting complete|0 lint|template is valid' validate.log build.log || true
+          # fail if any of these strings appear
+          if grep -q 'Unexpected character' validate.log build.log; then exit 1; fi
