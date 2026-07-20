@@ -141,6 +141,27 @@ Resources:
             - !Ref LambdaSecurityGroupId
         - !Ref AWS::NoValue
 
+  # One-shot migration runner (TEMPORAL). Applies any *.sql file under
+  # dist/migrations against the configured RDS using the same Pool the
+  # service handlers use. Will be removed once the project has a proper
+  # CI-driven migration step (npm run migrate:up running from a CI job
+  # with VPC access, e.g. SSM port-forward to the RDS). Until then, the
+  # deploy workflow can invoke this function once after the stack
+  # reaches UPDATE_COMPLETE to bootstrap the `identity.users` table.
+  IdentityMigrateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'orion-identity-migrate-${Environment}'
+      Handler: handlers/migrate.handler
+      CodeUri: ./dist
+      Role: !GetAtt IdentityFunctionRole.Arn
+      VpcConfig: !If
+        - AttachToVpc
+        - SubnetIds: !Split [",", !Ref VpcSubnetIds]
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
+
 Outputs:
   IdentityRegisterFunctionArn:
     Value: !GetAtt IdentityRegisterFunction.Arn
