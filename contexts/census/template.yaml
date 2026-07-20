@@ -83,6 +83,16 @@ Resources:
                 Action:
                   - events:PutEvents
                 Resource: '*'
+              # kms:Decrypt sobre las AWS-managed keys (SSM + Secrets Manager).
+              # Sin esto, `ssm:GetParameter` sobre un SecureString devuelve el
+              # ciphertext en vez del valor descifrado. Ver PR orion-infrastructure
+              # #44 + orion-backend companion para el fix del rol compartido.
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                Resource:
+                  - !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/ssm'
+                  - !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/secretsmanager'
 
   CensusListUnassignedFunction:
     Type: AWS::Serverless::Function
