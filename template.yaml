@@ -117,6 +117,8 @@ Resources:
         Environment: !Ref Environment
         VpcSubnetIds: !Ref VpcSubnetIds
         LambdaSecurityGroupId: !Ref LambdaSecurityGroupId
+        NodeSharedLayerArn: !Ref NodeSharedLayer
+        NodeRuntimeLayerArn: !Ref NodeRuntimeLayer
 
   ApiGatewayAuthorizer:
     Type: AWS::ApiGatewayV2::Authorizer
@@ -144,6 +146,8 @@ Resources:
         Environment: !Ref Environment
         VpcSubnetIds: !Ref VpcSubnetIds
         LambdaSecurityGroupId: !Ref LambdaSecurityGroupId
+        NodeSharedLayerArn: !Ref NodeSharedLayer
+        NodeRuntimeLayerArn: !Ref NodeRuntimeLayer
 
   IdentityRegisterIntegration:
     Type: AWS::ApiGatewayV2::Integration
@@ -220,6 +224,8 @@ Resources:
         Environment: !Ref Environment
         VpcSubnetIds: !Ref VpcSubnetIds
         LambdaSecurityGroupId: !Ref LambdaSecurityGroupId
+        NodeSharedLayerArn: !Ref NodeSharedLayer
+        NodeRuntimeLayerArn: !Ref NodeRuntimeLayer
 
   CensusListUnassignedIntegration:
     Type: AWS::ApiGatewayV2::Integration

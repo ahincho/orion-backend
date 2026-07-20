@@ -104,6 +104,40 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-east-1
 
+      - name: Reconcile stack state (delete if unrecoverable)
+        # CloudFormation rule: a stack whose FIRST create failed lands in
+        # ROLLBACK_COMPLETE, a terminal state that can only be deleted, never
+        # updated. Until the stack reaches CREATE_COMPLETE once, every retry is
+        # a fresh CREATE; a leftover ROLLBACK_COMPLETE (or other terminal state)
+        # makes the next `sam deploy` fail instantly at CreateChangeSet with
+        # "... is in ROLLBACK_COMPLETE state and can not be updated".
+        # This step makes the pipeline self-healing: it deletes a stack stuck in
+        # any non-updatable state (and waits for the deletion) so the deploy
+        # below always starts from a clean, deployable state.
+        run: |
+          set -euo pipefail
+          STACK_NAME=orion-backend-dev
+          REGION=us-east-1
+          STATUS=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" --region "$REGION" \
+            --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "DOES_NOT_EXIST")
+          echo "Current stack status: $STATUS"
+          case "$STATUS" in
+            DOES_NOT_EXIST)
+              echo "No existing stack; proceeding with fresh create."
+              ;;
+            ROLLBACK_COMPLETE|ROLLBACK_FAILED|CREATE_FAILED|DELETE_FAILED|REVIEW_IN_PROGRESS)
+              echo "::warning::Stack in non-updatable state '$STATUS'; deleting before deploy."
+              aws cloudformation delete-stack --stack-name "$STACK_NAME" --region "$REGION"
+              echo "Waiting for stack-delete-complete..."
+              aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME" --region "$REGION"
+              echo "Stack deleted; proceeding with fresh create."
+              ;;
+            *)
+              echo "Stack in updatable state '$STATUS'; proceeding with update."
+              ;;
+          esac
+
       - name: Install dependencies
         run: npm ci
 
@@ -141,9 +175,38 @@ jobs:
             --s3-prefix orion-backend \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
+            --disable-rollback \
             --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
             --region us-east-1 \
             --parameter-overrides ${{ needs.resolve-vpc-config.outputs.parameter-overrides }}"
           echo "Running: sam deploy $DEPLOY_ARGS"
           # shellcheck disable=SC2086
           sam deploy $DEPLOY_ARGS
+
+      - name: Dump stack failure events (diagnostics)
+        # On failure, --disable-rollback leaves the parent + nested stacks in
+        # CREATE_FAILED with resources retained. Dump every CREATE_FAILED /
+        # UPDATE_FAILED reason (parent AND each nested stack) straight into the
+        # CI log so the leaf cause is visible without local AWS access. The
+        # next run's "Reconcile stack state" step deletes the failed stack.
+        if: failure()
+        run: |
+          set +e
+          REGION=us-east-1
+          echo "===== Parent stack: orion-backend-dev ====="
+          aws cloudformation describe-stack-events \
+            --stack-name orion-backend-dev --region "$REGION" \
+            --query "StackEvents[?contains(ResourceStatus, 'FAILED')].[LogicalResourceId,ResourceType,ResourceStatusReason]" \
+            --output text
+          echo "===== Nested stacks ====="
+          for NESTED in $(aws cloudformation list-stack-resources \
+            --stack-name orion-backend-dev --region "$REGION" \
+            --query "StackResourceSummaries[?ResourceType=='AWS::CloudFormation::Stack'].PhysicalResourceId" \
+            --output text); do
+            echo "----- $NESTED -----"
+            aws cloudformation describe-stack-events \
+              --stack-name "$NESTED" --region "$REGION" \
+              --query "StackEvents[?contains(ResourceStatus, 'FAILED')].[LogicalResourceId,ResourceType,ResourceStatusReason]" \
+              --output text
+          done
+
