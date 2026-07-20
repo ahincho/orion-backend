@@ -1,5 +1,5 @@
 // =============================================================================
-// POST /admin/migrate - one-shot migration runner (TEMPORAL)
+// One-shot migration runner (TEMPORAL)
 // =============================================================================
 // Triggers the identity-context migrations against the configured RDS via
 // the shared `getDbConnection()` pool. Used by the Sprint 1 deploy to
@@ -9,17 +9,12 @@
 // VPC access, e.g. SSM port-forward to the RDS).
 //
 // Returns a JSON envelope listing the migration files found and the
-// SQL files that were executed (this lambda does NOT track applied
-// migrations in the `orion_migrations` table because node-pg-migrate
-// is not part of the lambda runtime -- the lambda directly applies
-// any *.sql file under the migration path that hasn't been run yet,
-// identified by file name).
+// SQL files that were executed.
 // =============================================================================
 
 import { readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { Tracer } from '@aws-lambda-powertools/tracer';
-import { buildHandler } from '@orion/shared/templates';
 import { createLogger } from '@orion/shared/logger';
 import { getDbConnection } from '../infra/db-connection.js';
 
@@ -44,45 +39,43 @@ async function listSqlFiles(): Promise<string[]> {
   }
 }
 
-export const handler = buildHandler<Record<string, never>, { applied: string[]; alreadyApplied: string[] }>({
-  inputSchema: undefined as never,
-  logger,
-  tracer,
-  requireAuth: false,
-  enableCors: false,
-  handler: async () => {
-    const files = await listSqlFiles();
-    if (files.length === 0) {
-      return { applied: [], alreadyApplied: [] };
-    }
+export const handler = async (): Promise<{
+  applied: string[];
+  alreadyApplied: string[];
+  missing: string[];
+}> => {
+  tracer.getSegment();
+  const files = await listSqlFiles();
+  if (files.length === 0) {
+    return { applied: [], alreadyApplied: [], missing: [MIGRATIONS_DIR] };
+  }
 
-    const db = await getDbConnection();
-    const applied: string[] = [];
-    const alreadyApplied: string[] = [];
+  const db = await getDbConnection();
+  const applied: string[] = [];
+  const alreadyApplied: string[] = [];
 
-    // The handler runs each *.sql file in order. Each file is expected
-    // to be idempotent (CREATE SCHEMA IF NOT EXISTS, CREATE TABLE IF
-    // NOT EXISTS, etc.) because the lambda has no migration-tracking
-    // table. Files that have already been applied (e.g. V001-V005
-    // census migrations) will be re-run but their effect is a no-op
-    // thanks to IF NOT EXISTS.
-    for (const file of files) {
-      const sql = await readFile(join(MIGRATIONS_DIR, file), 'utf8');
-      try {
-        await db.executeQuery({ sql, parameters: [] } as never);
-        applied.push(file);
-        logger.info('Applied migration', { file });
-      } catch (err) {
-        const msg = String(err);
-        if (/already exists|duplicate key/i.test(msg)) {
-          alreadyApplied.push(file);
-        } else {
-          logger.error('Migration failed', { file, error: msg });
-          throw err;
-        }
+  for (const file of files) {
+    const sql = await readFile(join(MIGRATIONS_DIR, file), 'utf8');
+    try {
+      // Kysely's executeQuery accepts a Compilable. We pass a raw SQL
+      // string and cast to any because the strict types don't expose
+      // a public helper for executing arbitrary DDL with no
+      // parameters; the runtime path is `pg.query(sql, params)`, which
+      // is what we want.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (db as any).executeQuery({ sql, parameters: [] });
+      applied.push(file);
+      logger.info('Applied migration', { file });
+    } catch (err) {
+      const msg = String(err);
+      if (/already exists|duplicate key/i.test(msg)) {
+        alreadyApplied.push(file);
+      } else {
+        logger.error('Migration failed', { file, error: msg });
+        throw err;
       }
     }
+  }
 
-    return { applied, alreadyApplied };
-  },
-});
+  return { applied, alreadyApplied, missing: [] };
+};
