@@ -9,10 +9,12 @@
 #     that depends on the 4 (preserves the [lint, build, test] gate without
 #     forcing a ruleset update).
 #
-# Pin strategy: reference spark-match-01-devops@dev while the recipes are
-# maturing on `dev`. After validate-in-orion, the recipes get promoted to
-# `main` and the pin moves to @main for prod safety (per VERSIONING.md
-# pin-by-env rule).
+# Pin strategy: now `@main`. The recipes (actionlint, gitleaks, yamllint,
+# eslint) were promoted from @dev to @main in spark-match-01-devops PR #45
+# (after consumer validation in orion-backend PR #46 + orion-infrastructure
+# PR #24). Future recipe work happens on @dev first; consumers move the
+# pin only after a release PR merges @main in the cookbook repo. This
+# aligns with the pin-by-env rule in spark-match-01-devops/docs/VERSIONING.md.
 # =============================================================================
 
 name: CI - Lint & Test
@@ -78,25 +80,25 @@ jobs:
   # ---------------------------------------------------------------------------
   actionlint:
     name: actionlint
-    uses: spark-match/spark-match-01-devops/.github/workflows/actionlint.yml@dev
+    uses: spark-match/spark-match-01-devops/.github/workflows/actionlint.yml@main
     with:
       environment-name: ci
 
   gitleaks:
     name: gitleaks
-    uses: spark-match/spark-match-01-devops/.github/workflows/gitleaks.yml@dev
+    uses: spark-match/spark-match-01-devops/.github/workflows/gitleaks.yml@main
     with:
       environment-name: ci
 
   yamllint:
     name: yamllint
-    uses: spark-match/spark-match-01-devops/.github/workflows/yamllint.yml@dev
+    uses: spark-match/spark-match-01-devops/.github/workflows/yamllint.yml@main
     with:
       environment-name: ci
 
   eslint:
     name: eslint
-    uses: spark-match/spark-match-01-devops/.github/workflows/eslint.yml@dev
+    uses: spark-match/spark-match-01-devops/.github/workflows/eslint.yml@main
     with:
       environment-name: ci
       eslint-version: 10
