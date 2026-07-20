@@ -24,9 +24,9 @@ Parameters:
     Default: dev
     AllowedValues: [dev, prod]
   VpcSubnetIds:
-    Type: List<AWS::EC2::Subnet::Id>
-    Description: Subnet IDs for VPC-attached Lambda. Empty = no VpcConfig (local dev).
-    Default: '""'
+    Type: String
+    Description: Comma-separated subnet IDs for VPC-attached Lambda. Empty = no VpcConfig.
+    Default: ''
   LambdaSecurityGroupId:
     Type: String
     Description: Security group ID for VPC-attached Lambda. Empty = no VpcConfig.
@@ -34,7 +34,7 @@ Parameters:
 
 Conditions:
   AttachToVpc: !And
-    - !Not [!Equals [!Ref VpcSubnetIds, '""']]
+    - !Not [!Equals [!Ref VpcSubnetIds, '']]
     - !Not [!Equals [!Ref LambdaSecurityGroupId, '']]
 
 Globals:
@@ -105,7 +105,7 @@ Resources:
           Fn::Sub: "orion-node-runtime-layer-arn-${Environment}"
       VpcConfig: !If
         - AttachToVpc
-        - SubnetIds: !Ref VpcSubnetIds
+        - SubnetIds: !Split [",", !Ref VpcSubnetIds]
           SecurityGroupIds:
             - !Ref LambdaSecurityGroupId
         - !Ref AWS::NoValue
