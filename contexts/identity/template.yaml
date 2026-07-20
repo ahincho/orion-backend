@@ -90,7 +90,7 @@ Resources:
     Properties:
       FunctionName: !Sub 'orion-identity-register-${Environment}'
       Handler: handlers/register.handler
-      CodeUri: ./
+      CodeUri: ./dist
       Role: !GetAtt IdentityFunctionRole.Arn
       VpcConfig: !If
         - AttachToVpc
@@ -104,7 +104,7 @@ Resources:
     Properties:
       FunctionName: !Sub 'orion-identity-login-${Environment}'
       Handler: handlers/login.handler
-      CodeUri: ./
+      CodeUri: ./dist
       Role: !GetAtt IdentityFunctionRole.Arn
       VpcConfig: !If
         - AttachToVpc
@@ -118,7 +118,7 @@ Resources:
     Properties:
       FunctionName: !Sub 'orion-identity-get-me-${Environment}'
       Handler: handlers/get-me.handler
-      CodeUri: ./
+      CodeUri: ./dist
       Role: !GetAtt IdentityFunctionRole.Arn
       VpcConfig: !If
         - AttachToVpc
@@ -132,7 +132,7 @@ Resources:
     Properties:
       FunctionName: !Sub 'orion-identity-change-password-${Environment}'
       Handler: handlers/change-password.handler
-      CodeUri: ./
+      CodeUri: ./dist
       Role: !GetAtt IdentityFunctionRole.Arn
       VpcConfig: !If
         - AttachToVpc
