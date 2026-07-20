@@ -56,7 +56,9 @@ Globals:
         LOG_LEVEL: INFO
         POWERTOOLS_SERVICE_NAME: !Sub "orion-authorizer-${Environment}"
         NODE_OPTIONS: --enable-source-maps
-        CORS_ORIGINS: '{{resolve:ssm:/orion/cors/allowed-origins~true}}'
+        # Runtime config (CORS origins) is read directly from SSM at runtime
+        # by the Lambda handlers via @orion/shared/infra. See template.yaml
+        # header for rationale.
 
 Resources:
   AuthorizerFunctionRole:
