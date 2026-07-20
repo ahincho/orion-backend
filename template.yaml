@@ -45,12 +45,12 @@ Parameters:
   # Phase 1 - VPC attachment for Lambda functions.
   # These two params are passed in by .github/workflows/deploy.yml which
   # fetches their values from SSM:
-  #   /orion/lambda/vpc-subnet-ids    (comma-separated, ≥ 2 AZs)
+  #   /orion/lambda/vpc-subnet-ids    (comma-separated, >= 2 AZs)
   #   /orion/lambda/security-group-id (egress-only SG)
   # Empty defaults keep local `sam local start-api` working without AWS state.
   VpcSubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
-    Description: Subnet IDs (≥ 2 AZs, must include the private subnets where RDS lives) for the VPC-attached Lambdas.
+    Description: Subnet IDs (>= 2 AZs, must include the private subnets where RDS lives) for the VPC-attached Lambdas.
     Default: '""'
 
   LambdaSecurityGroupId:
