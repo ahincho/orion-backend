@@ -84,6 +84,18 @@ Resources:
                 Action:
                   - events:PutEvents
                 Resource: '*'
+              # kms:Decrypt sobre las AWS-managed keys (SSM + Secrets Manager).
+              # Sin esto, `ssm:GetParameter` sobre un SecureString devuelve el
+              # ciphertext en vez del valor descifrado, y la cadena
+              # `ssm.getRequiredString('/orion/db/secret-arn') -> secrets.getJson(arn)`
+              # falla con "Secrets Manager can't find the specified secret"
+              # (porque el Lambda pasa el ciphertext como SecretId).
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                Resource:
+                  - !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/ssm'
+                  - !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/secretsmanager'
 
   IdentityRegisterFunction:
     Type: AWS::Serverless::Function
