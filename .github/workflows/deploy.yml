@@ -116,8 +116,7 @@ jobs:
       - name: Setup SAM CLI
         uses: aws-actions/setup-sam@v3
         with:
-          version: 1.163.0
-          use-installer: true
+          version: 1.137.0
 
       - name: SAM Build
         run: sam build --template template.yaml
