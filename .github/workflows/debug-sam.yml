@@ -1,0 +1,37 @@
+# =============================================================================
+# Debug - SAM CLI parser bisect
+# =============================================================================
+# Runs sam validate and sam build on each PR branch so we can bisect the
+# 'Unexpected character: u at line 10 col 9' parser bug without polluting main.
+# =============================================================================
+name: Debug - SAM parser bisect
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sam-validate:
+    name: sam validate (--debug)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: aws-actions/setup-sam@v3
+        with:
+          version: '1.137.0'
+      - name: cat template.yaml (sha256)
+        run: sha256sum template.yaml
+      - name: sam validate --debug
+        run: set -o pipefail; sam validate --debug --template template.yaml --lint 2>&1 | tee validate.log
+      - name: sam build --debug
+        run: set -o pipefail; sam build --debug --template template.yaml 2>&1 | tee build.log
+      - name: result
+        if: always()
+        run: |
+          grep -E 'Unexpected character|Linting complete|0 lint|template is valid' validate.log build.log || true
+          # fail if any of these strings appear
+          if grep -q 'Unexpected character' validate.log build.log; then exit 1; fi
