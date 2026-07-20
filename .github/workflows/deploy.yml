@@ -116,7 +116,7 @@ jobs:
       - name: Setup SAM CLI
         uses: aws-actions/setup-sam@v3
         with:
-          version: 1.137.0
+          version: 1.163.0
 
       - name: SAM Build
         # SAM CLI 1.137-1.163 has a parser bug that triggers
