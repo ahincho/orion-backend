@@ -10,10 +10,10 @@
     "test": "vitest run --root ../.."
   },
   "dependencies": {
-    "@orion/shared": "*",
     "jose": "^6.2.3"
   },
   "devDependencies": {
+    "@orion/shared": "*",
     "@types/aws-lambda": "^8.10.152",
     "typescript": "^6.0.3"
   }
