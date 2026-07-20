@@ -1,0 +1,12 @@
+{
+  "name": "@orion/layer-node-shared",
+  "version": "0.0.0",
+  "description": "ORION backend Lambda Layer: compiled @orion/shared workspace (http/db/auth/events/infra/templates/logger/cors). Built into a zip and mounted at /opt.",
+  "private": true,
+  "scripts": {
+    "build": "bash build.sh"
+  },
+  "dependencies": {
+    "@orion/shared": "*"
+  }
+}
