@@ -66,12 +66,24 @@ export const handler = async (
     // SQL: `LIKE` pattern is built from `prefix + '%@%'`. The prefix is
     // length-bounded by the trim above (no wildcards from caller input).
     // `limit` is a typed integer (above) so no injection surface.
+    //
+    // Note: Postgres does NOT support `LIMIT` directly on DELETE statements
+    // (only on SELECT). We express the cap as a subquery on the IDs to
+    // delete, which kysely translates to `DELETE ... WHERE id IN (SELECT
+    // id ... LIMIT N)`.
     const pattern = `${prefix}%@%`;
     const deleted = await db
       .deleteFrom('users')
-      .where('email', 'like', pattern)
+      .where(
+        'id',
+        'in',
+        db
+          .selectFrom('users')
+          .select('id')
+          .where('email', 'like', pattern)
+          .limit(limit),
+      )
       .returning('email')
-      .limit(limit)
       .execute();
 
     const emails = deleted.map((row) => row.email);
