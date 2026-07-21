@@ -16,14 +16,14 @@
 #
 # Reference: https://github.com/stelligent/cfn_nag/blob/master/docs/cfn-nag-rules.md
 #
-# Critical rules we rely on (do NOT add to RulesToIgnore without a comment):
-#   F36: AWS::Lambda::Permission MUST have SourceArn/SourceAccount. This is
-#        the rule that defends against cross-API confusion in the
-#        AuthorizerFunctionPermission wiring (see
-#        orion-infrastructure ADR 0007). Removing F36 here would re-introduce
-#        the silent regression we documented.
-#   F4:  IAM trust policies MUST NOT use "*" service principal. This prevents
-#        "any AWS service can assume this role" misconfigurations.
+# IMPORTANT: cfn-nag 0.8.10 does NOT have a built-in rule that checks
+# AWS::Lambda::Permission for the presence of SourceArn / SourceAccount.
+# The Lambda-related rules are only:
+#   W24 - action is lambda:InvokeFunction (warning)
+#   F45 - eventSourceToken is not plaintext (failing)
+# Neither validates the cross-API confusion defense. The custom check
+# scripts/check-lambda-permission-source-arn.py fills that gap (added in
+# PR #104, see orion-infrastructure ADR 0007 for context).
 # =============================================================================
 
 RulesToIgnore: []
