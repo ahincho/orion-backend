@@ -174,6 +174,39 @@ Resources:
             - !Ref LambdaSecurityGroupId
         - !Ref AWS::NoValue
 
+  # ----------------------------------------------------------------------------
+  # Smoke test cleanup (dev-only, internal). Invoked directly via
+  # `aws lambda invoke` from the Smoke Test - orion-backend-dev workflow after
+  # the test passes, to remove the test user created during the run. Not
+  # exposed via API Gateway. The GH deploy OIDC role already grants
+  # `lambda:InvokeFunction` on `orion-*-dev` ARNs (orion-infrastructure
+  # modules/iam-sam-deploy-dev/main.tf, LambdaManageFunctions statement), so
+  # no AWS::Lambda::Permission resource is needed here. A new permission would
+  # require a SourceArn (per the lambda-permission-source-arn custom check
+  # in orion-backend) but this Lambda has no event source - it is invoked
+  # directly.
+  # ----------------------------------------------------------------------------
+  IdentitySmokeTestCleanupFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'orion-identity-smoke-test-cleanup-${Environment}'
+      Handler: handlers/smoke-test-cleanup.handler
+      CodeUri: ./dist
+      Role: !GetAtt IdentityFunctionRole.Arn
+      MemorySize: 256
+      Timeout: 15
+      VpcConfig: !If
+        - AttachToVpc
+        - SubnetIds: !Split [",", !Ref VpcSubnetIds]
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
+      # Distinct Powertools service name so CloudWatch Insights queries can
+      # filter cleanup invocations separately from the user-facing handlers.
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: !Sub 'orion-identity-smoke-test-cleanup-${Environment}'
+
 Outputs:
   IdentityRegisterFunctionArn:
     Value: !GetAtt IdentityRegisterFunction.Arn
@@ -191,3 +224,7 @@ Outputs:
     Value: !GetAtt IdentityChangePasswordFunction.Arn
     Export:
       Name: !Sub 'orion-identity-change-password-arn-${Environment}'
+  IdentitySmokeTestCleanupFunctionArn:
+    Value: !GetAtt IdentitySmokeTestCleanupFunction.Arn
+    Export:
+      Name: !Sub 'orion-identity-smoke-test-cleanup-arn-${Environment}'
