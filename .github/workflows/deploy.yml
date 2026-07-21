@@ -64,7 +64,7 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-east-1
 
-      - name: Fetch VPC params from SSM and build --parameter-overrides string
+      - name: Fetch VPC + authorizer role params from SSM and build --parameter-overrides string
         id: vpc
         run: |
           set -euo pipefail
@@ -74,12 +74,20 @@ jobs:
           SG_ID=$(aws ssm get-parameter \
             --name /orion/lambda/security-group-id \
             --query "Parameter.Value" --output text --region us-east-1)
-          if [ -z "$SUBNET_IDS" ] || [ -z "$SG_ID" ]; then
-            echo "::error::Empty SSM value(s); abort."
+          # Authorizer invoke role ARN (modules/iam-apigateway-authorizer-invoke
+          # in orion-infrastructure). Usado por AWS::ApiGatewayV2::Authorizer
+          # .AuthorizerCredentialsArn (ver template.yaml). Se lee de SSM en vez
+          # de hardcodear el default en template.yaml para que la rotacion del
+          # role no requiera PR a orion-backend.
+          AUTHORIZER_ROLE_ARN=$(aws ssm get-parameter \
+            --name /orion/iam/apigateway-authorizer-invoke-role-arn \
+            --query "Parameter.Value" --output text --region us-east-1)
+          if [ -z "$SUBNET_IDS" ] || [ -z "$SG_ID" ] || [ -z "$AUTHORIZER_ROLE_ARN" ]; then
+            echo "::error::Empty SSM value(s) (subnets=$SUBNET_IDS sg=$SG_ID authorizer=$AUTHORIZER_ROLE_ARN); abort."
             exit 1
           fi
           # SAM CLI List type is comma-separated, no shell-escape needed.
-          PARAM_OVERRIDES="VpcSubnetIds=${SUBNET_IDS} LambdaSecurityGroupId=${SG_ID}"
+          PARAM_OVERRIDES="VpcSubnetIds=${SUBNET_IDS} LambdaSecurityGroupId=${SG_ID} ApigatewayAuthorizerInvokeRoleArn=${AUTHORIZER_ROLE_ARN}"
           echo "Resolved --parameter-overrides: $PARAM_OVERRIDES"
           echo "parameter-overrides=$PARAM_OVERRIDES" >> "$GITHUB_OUTPUT"
 
