@@ -119,7 +119,7 @@ jobs:
             echo "::error::Login failed with status $LOGIN_HTTP"
             exit 1
           fi
-          TOKEN=$(jq -r '.token // .access_token // .jwt // empty' /tmp/login.json)
+          TOKEN=$(jq -r '.data.token // .token // .data.access_token // .access_token // .data.jwt // .jwt // empty' /tmp/login.json)
           if [ -z "$TOKEN" ]; then
             echo "::error::No token in login response (expected .token / .access_token / .jwt)"
             cat /tmp/login.json
