@@ -1,0 +1,166 @@
+# =============================================================================
+# Smoke Test - orion-backend-dev
+# =============================================================================
+# Triggered manually via workflow_dispatch. Runs the full happy path against
+# the deployed API to validate:
+#   1. POST /v1/auth/register (expect 201)
+#   2. POST /v1/auth/login (expect 200 + JWT)
+#   3. GET /v1/users/me with Bearer (expect 200 + user data)
+#   4. GET /v1/users/me without Bearer (expect 401)
+#   5. GET /v1/users/me with malformed Bearer (expect 401)
+#
+# This guards against:
+#   - Authorizer Lambda silently breaking (login would still 200, /me would 500/401).
+#   - Lambda::Permission SourceArn missing (cross-API confusion returns, see ADR 0007).
+#   - VPC / SG / subnet drift breaking the Lambda -> RDS path.
+#   - Secrets Manager rotation breaking JWT signing (login would 500).
+#
+# The API URL is read from SSM parameter /orion/smoke-test/api-url, which is
+# published by the CD - Deploy workflow after each successful sam deploy
+# (see deploy.yml "Publish API URL to SSM" step). Can be overridden via
+# workflow_dispatch input for ad-hoc testing against a different stack.
+#
+# Each run leaves a test user in the DB
+# (email = smoke-<unix-ts>@orion-test.local). Dev environment; cleanup is
+# manual if needed (no automatic DELETE since the runner has no VPC access
+# to the RDS instance and there is no /v1/users/me DELETE endpoint yet).
+# =============================================================================
+
+name: Smoke Test - orion-backend-dev
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_url_override:
+        description: 'Override API URL (skip SSM lookup for ad-hoc testing)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: smoke-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke-test:
+    name: E2E smoke test
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Configure AWS credentials (OIDC, deploy role for SSM read)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Resolve API URL
+        id: api-url
+        env:
+          OVERRIDE: ${{ inputs.api_url_override }}
+        run: |
+          set -euo pipefail
+          if [ -n "$OVERRIDE" ]; then
+            API_URL="$OVERRIDE"
+            echo "Using override API URL: $API_URL"
+          else
+            API_URL=$(aws ssm get-parameter \
+              --name /orion/smoke-test/api-url \
+              --query "Parameter.Value" --output text --region us-east-1)
+            if [ -z "$API_URL" ] || [ "$API_URL" = "None" ]; then
+              echo "::error::SSM parameter /orion/smoke-test/api-url is empty or missing."
+              echo "::error::Run the CD - Deploy workflow first, or pass api_url_override."
+              exit 1
+            fi
+            echo "Resolved API URL from SSM: $API_URL"
+          fi
+          echo "api_url=$API_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Install curl + jq
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq jq > /dev/null
+
+      - name: Run smoke test
+        env:
+          API_URL: ${{ steps.api-url.outputs.api_url }}
+        run: |
+          set -euo pipefail
+          TS=$(date +%s)
+          EMAIL="smoke-${TS}@orion-test.local"
+          PASSWORD="SmokeTest-${TS}-X1-secure"
+
+          echo "=== 1. POST /v1/auth/register (expect 201) ==="
+          REGISTER_HTTP=$(curl -sS -o /tmp/register.json -w "%{http_code}" \
+            -X POST "${API_URL}/v1/auth/register" \
+            -H "Content-Type: application/json" \
+            -d "{\"email\":\"${EMAIL}\",\"password\":\"${PASSWORD}\"}")
+          echo "Status: $REGISTER_HTTP"
+          cat /tmp/register.json
+          echo ""
+          if [ "$REGISTER_HTTP" != "201" ] && [ "$REGISTER_HTTP" != "200" ]; then
+            echo "::error::Register failed with status $REGISTER_HTTP"
+            exit 1
+          fi
+
+          echo ""
+          echo "=== 2. POST /v1/auth/login (expect 200 + token) ==="
+          LOGIN_HTTP=$(curl -sS -o /tmp/login.json -w "%{http_code}" \
+            -X POST "${API_URL}/v1/auth/login" \
+            -H "Content-Type: application/json" \
+            -d "{\"email\":\"${EMAIL}\",\"password\":\"${PASSWORD}\"}")
+          echo "Status: $LOGIN_HTTP"
+          cat /tmp/login.json
+          echo ""
+          if [ "$LOGIN_HTTP" != "200" ]; then
+            echo "::error::Login failed with status $LOGIN_HTTP"
+            exit 1
+          fi
+          TOKEN=$(jq -r '.token // .access_token // .jwt // empty' /tmp/login.json)
+          if [ -z "$TOKEN" ]; then
+            echo "::error::No token in login response (expected .token / .access_token / .jwt)"
+            cat /tmp/login.json
+            exit 1
+          fi
+          echo "Token (first 30 chars): ${TOKEN:0:30}..."
+
+          echo ""
+          echo "=== 3. GET /v1/users/me with Bearer (expect 200) ==="
+          ME_HTTP=$(curl -sS -o /tmp/me.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            "${API_URL}/v1/users/me")
+          echo "Status: $ME_HTTP"
+          cat /tmp/me.json
+          echo ""
+          if [ "$ME_HTTP" != "200" ]; then
+            echo "::error::GET /me with token failed with status $ME_HTTP"
+            exit 1
+          fi
+
+          echo ""
+          echo "=== 4. GET /v1/users/me WITHOUT Bearer (expect 401) ==="
+          NO_AUTH_HTTP=$(curl -sS -o /tmp/no-auth.json -w "%{http_code}" \
+            "${API_URL}/v1/users/me")
+          echo "Status: $NO_AUTH_HTTP"
+          if [ "$NO_AUTH_HTTP" != "401" ]; then
+            echo "::error::GET /me without token expected 401, got $NO_AUTH_HTTP"
+            exit 1
+          fi
+
+          echo ""
+          echo "=== 5. GET /v1/users/me with malformed Bearer (expect 401) ==="
+          BAD_AUTH_HTTP=$(curl -sS -o /tmp/bad-auth.json -w "%{http_code}" \
+            -H "Authorization: Bearer not-a-jwt" \
+            "${API_URL}/v1/users/me")
+          echo "Status: $BAD_AUTH_HTTP"
+          if [ "$BAD_AUTH_HTTP" != "401" ]; then
+            echo "::error::GET /me with bad token expected 401, got $BAD_AUTH_HTTP"
+            exit 1
+          fi
+
+          echo ""
+          echo "=== ALL SMOKE TESTS PASSED ==="
+          echo "Test user: ${EMAIL} (left in DB; cleanup is manual for dev)"

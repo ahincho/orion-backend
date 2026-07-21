@@ -198,6 +198,33 @@ jobs:
           # shellcheck disable=SC2086
           sam deploy $DEPLOY_ARGS
 
+      - name: Publish API URL to SSM (smoke-test input)
+        # The Smoke Test - orion-backend-dev workflow reads /orion/smoke-test/api-url
+        # instead of hardcoding the API endpoint, so it survives stack recreations.
+        # This step publishes the deployed HttpApiUrl on every successful deploy.
+        # Skipped silently if the stack output is missing (e.g. on a failed deploy).
+        if: success()
+        run: |
+          set -euo pipefail
+          STACK_NAME=orion-backend-dev
+          REGION=us-east-1
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" --region "$REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='HttpApiUrl'].OutputValue" \
+            --output text)
+          if [ -z "$API_URL" ] || [ "$API_URL" = "None" ]; then
+            echo "::warning::HttpApiUrl output missing from stack $STACK_NAME; skipping SSM publish."
+            exit 0
+          fi
+          aws ssm put-parameter \
+            --name /orion/smoke-test/api-url \
+            --value "$API_URL" \
+            --type String \
+            --overwrite \
+            --description "Written by CD - Deploy workflow; consumed by Smoke Test - orion-backend-dev workflow" \
+            --region "$REGION"
+          echo "Published API URL to SSM: $API_URL"
+
       - name: Dump stack failure events (diagnostics)
         # On failure, --disable-rollback leaves the parent + nested stacks in
         # CREATE_FAILED with resources retained. Dump every CREATE_FAILED /
