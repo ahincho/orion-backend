@@ -1,0 +1,29 @@
+# =============================================================================
+# cfn-nag configuration for orion-backend SAM templates
+# =============================================================================
+# cfn-nag scans SAM/CloudFormation templates for security anti-patterns.
+# Rules are categorized as FAILING (F-rules) and WARNING (W-rules).
+# FAILING rules cause the build to fail; WARNING rules are reported but
+# do not gate the build.
+#
+# RulesToIgnore lists rule IDs to suppress. Empty here = use cfn-nag defaults.
+# Update this file when:
+#   - A FAILING rule fires on a finding we have triaged as false-positive or
+#     accepted-risk (document the rationale in the comment below).
+#   - A new rule should be enforced (add to `RulesToIgnore` of OTHER rules if
+#     we want a stricter narrower check; otherwise cfn-nag picks up new rules
+#     on cfn-nag version bumps in CI).
+#
+# Reference: https://github.com/stelligent/cfn_nag/blob/master/docs/cfn-nag-rules.md
+#
+# Critical rules we rely on (do NOT add to RulesToIgnore without a comment):
+#   F36: AWS::Lambda::Permission MUST have SourceArn/SourceAccount. This is
+#        the rule that defends against cross-API confusion in the
+#        AuthorizerFunctionPermission wiring (see
+#        orion-infrastructure ADR 0007). Removing F36 here would re-introduce
+#        the silent regression we documented.
+#   F4:  IAM trust policies MUST NOT use "*" service principal. This prevents
+#        "any AWS service can assume this role" misconfigurations.
+# =============================================================================
+
+RulesToIgnore: []

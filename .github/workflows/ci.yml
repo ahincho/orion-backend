@@ -74,7 +74,8 @@ jobs:
         run: npm ci
 
   # ---------------------------------------------------------------------------
-  # Lint & Security - 4 atomic reusables from spark-match-01-devops
+  # Lint & Security - 5 atomic checks: 4 reusables from spark-match-01-devops
+  # + cfn-nag inline (no reusable yet in spark-match-01-devops).
   # Each runs against this repo's code with environment-name=ci (informational
   # only; the recipes don't gate on the GH Environment for these checks).
   # ---------------------------------------------------------------------------
@@ -103,14 +104,48 @@ jobs:
       environment-name: ci
       eslint-version: 10
 
+  # cfn-nag: scan SAM/CloudFormation templates for security anti-patterns.
+  # Critical rules enforced (see .cfn-nag.yml for the full allowlist/denylist):
+  #   F36: AWS::Lambda::Permission MUST specify SourceArn (cross-API confusion).
+  #   F4:  IAM role trust policies MUST NOT allow wildcard service principal.
+  # cfn-nag exit code is non-zero when any FAILING rule fires, so the job
+  # fails the build automatically when violations are introduced.
+  cfn-nag:
+    name: cfn-nag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Ruby 3.3
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: false
+
+      - name: Install cfn-nag
+        run: gem install cfn-nag --no-document
+
+      - name: Scan SAM templates
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          TEMPLATES=( template.yaml contexts/**/template.yaml )
+          for tpl in "${TEMPLATES[@]}"; do
+            [ -f "$tpl" ] || continue
+            echo "=== Scanning $tpl ==="
+            cfn_nag_scan --input-path "$tpl" --output-format txt
+          done
+
   # ---------------------------------------------------------------------------
   # Aggregate 'lint' job - satisfies ruleset 19160658's required [lint, build,
   # test] gate without forcing a ruleset update. The job itself does nothing
-  # except report whether all 4 atomic checks passed.
+  # except report whether all 5 atomic checks passed.
   # ---------------------------------------------------------------------------
   lint:
     name: lint
-    needs: [actionlint, gitleaks, yamllint, eslint]
+    needs: [actionlint, gitleaks, yamllint, eslint, cfn-nag]
     runs-on: ubuntu-latest
     if: ${{ always() }}
     steps:
@@ -121,6 +156,7 @@ jobs:
             "gitleaks=${{ needs.gitleaks.result }}"
             "yamllint=${{ needs.yamllint.result }}"
             "eslint=${{ needs.eslint.result }}"
+            "cfn-nag=${{ needs.cfn-nag.result }}"
           )
           FAILED=0
           for pair in "${RESULTS[@]}"; do
