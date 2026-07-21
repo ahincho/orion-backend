@@ -363,7 +363,9 @@ Resources:
       FunctionName: !GetAtt AuthorizerStack.Outputs.AuthorizerFunctionArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
+      # SourceArn REMOVED INTENTIONALLY to verify cfn-nag catches F36 violation.
+      # DO NOT MERGE - this branch exists only to prove the CI gate works.
+      # SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
 
   # ---------------------------------------------------------------------------
   # Lambda Layers - shared kernel + runtime dependencies
