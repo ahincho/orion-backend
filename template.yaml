@@ -143,8 +143,8 @@ Resources:
         - $request.header.Authorization
       AuthorizerResultTtlInSeconds: 300
       AuthorizerPayloadFormatVersion: '2.0'
-      # EnableSimpleResponses: SI (default). El authorizer devuelve el formato
-      # simple `{isAuthorized, context}` (ver contexts/authorizer/src/handler.ts).
+      # EnableSimpleResponses: SI. El authorizer devuelve el formato simple
+      # `{isAuthorized, context}` (ver contexts/authorizer/src/handler.ts).
       # Habilitar simple responses alinea API Gateway con el formato del
       # handler y permite que el `context` (userId/email/role) llegue al
       # target Lambda via `event.requestContext.authorizer.lambda.*`.
@@ -153,7 +153,10 @@ Resources:
       # "Policy response did not include principalId".
       # Nota: `EnableSimpleResponses` es INMUTABLE despues de crear el
       # authorizer. Si se necesita cambiar, hay que borrar + recrear el
-      # authorizer (no es actualizable via UpdateAuthorizer).
+      # authorizer (no es actualizable via UpdateAuthorizer). Por eso
+      # hay que declararlo explicitamente aqui (no confiar en el default,
+      # que es `false` para v2.0).
+      EnableSimpleResponses: true
 
   # ---------------------------------------------------------------------------
   # Identity bounded context (nested stack) - users + JWT issuance
