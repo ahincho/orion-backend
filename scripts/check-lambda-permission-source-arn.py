@@ -76,7 +76,13 @@ def _scan_template(template_path: Path) -> list[tuple[str, int]]:
                 end_of_block = i
                 break
 
-        block_text = "\n".join(lines[header_line:end_of_block])
+        # Strip comment lines before scanning for SourceArn/SourceAccount.
+        # A commented-out `# SourceArn: ...` should NOT count as a fix.
+        block_lines = lines[header_line:end_of_block]
+        active_lines = [
+            ln for ln in block_lines if not ln.lstrip().startswith("#")
+        ]
+        block_text = "\n".join(active_lines)
         if "SourceArn:" not in block_text and "SourceAccount:" not in block_text:
             offenders.append((logical_id, header_line))
 
