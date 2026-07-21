@@ -201,21 +201,31 @@ jobs:
       - name: Publish API URL to SSM (smoke-test input)
         # The Smoke Test - orion-backend-dev workflow reads /orion/smoke-test/api-url
         # instead of hardcoding the API endpoint, so it survives stack recreations.
-        # This step publishes the deployed HttpApiUrl on every successful deploy.
-        # Skipped silently if the stack output is missing (e.g. on a failed deploy).
+        # This step publishes the deployed invoke URL (base + stage) on every
+        # successful deploy. Skipped silently if the stack output is missing.
         if: success()
         run: |
           set -euo pipefail
           STACK_NAME=orion-backend-dev
           REGION=us-east-1
-          API_URL=$(aws cloudformation describe-stacks \
+          BASE_URL=$(aws cloudformation describe-stacks \
             --stack-name "$STACK_NAME" --region "$REGION" \
             --query "Stacks[0].Outputs[?OutputKey=='HttpApiUrl'].OutputValue" \
             --output text)
-          if [ -z "$API_URL" ] || [ "$API_URL" = "None" ]; then
+          if [ -z "$BASE_URL" ] || [ "$BASE_URL" = "None" ]; then
             echo "::warning::HttpApiUrl output missing from stack $STACK_NAME; skipping SSM publish."
             exit 0
           fi
+          # Stage name == Environment parameter (HttpApiStage.StageName=!Ref Environment).
+          STAGE=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" --region "$REGION" \
+            --query "Stacks[0].Parameters[?ParameterKey=='Environment'].ParameterValue" \
+            --output text)
+          if [ -z "$STAGE" ] || [ "$STAGE" = "None" ]; then
+            echo "::warning::Environment parameter missing from stack $STACK_NAME; skipping SSM publish."
+            exit 0
+          fi
+          API_URL="${BASE_URL}/${STAGE}"
           aws ssm put-parameter \
             --name /orion/smoke-test/api-url \
             --value "$API_URL" \
