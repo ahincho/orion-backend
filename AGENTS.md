@@ -118,14 +118,16 @@ contexts/<name>/
   `SourceArn` o `SourceAccount` apuntando al API Gateway / event
   source. Esta scoping evita cross-API confusion cuando varios HTTP
   APIs en la misma cuenta AWS comparten un Lambda authorizer. El CI
-  job `lambda-permission-source-arn` (`scripts/check-lambda-permission-source-arn.py`,
-  Python stdlib, regex scan) bloquea PRs que remuevan estos campos
-  (incluso comentados). **cfn-nag 0.8.10 NO tiene regla equivalente**
-  — sus únicas Lambda rules son W24 (action check) y F45
-  (eventSourceToken no plaintext). Rationale completo y la razón por
-  la que la trust policy del role invocador está limitada al service
-  principal (sin `aws:SourceAccount`/`aws:SourceArn`) están en
-  [ADR 0007 de orion-infrastructure](https://github.com/ahincho/orion-infrastructure/blob/main/docs/adr/0007-api-gateway-authorizer-trust-policy.md).
+  job `lambda-permission-source-arn` (reusable workflow en
+  `spark-match/spark-match-01-devops/.github/workflows/lambda-permission-source-arn.yml@main`,
+  script Python stdlib en `spark-match-01-devops/scripts/check_lambda_permission_source_arn.py`)
+  bloquea PRs que remuevan estos campos (incluso comentados).
+  **cfn-nag 0.8.10 NO tiene regla equivalente** — sus únicas Lambda
+  rules son W24 (action check) y F45 (eventSourceToken no plaintext).
+  Rationale completo y la razón por la que la trust policy del role
+  invocador está limitada al service principal (sin
+  `aws:SourceAccount`/`aws:SourceArn`) están en [ADR 0007 de
+  orion-infrastructure](https://github.com/ahincho/orion-infrastructure/blob/main/docs/adr/0007-api-gateway-authorizer-trust-policy.md).
 
 ## Antes de empezar a codear
 
