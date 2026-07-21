@@ -53,6 +53,23 @@ export async function getDbConnection(): Promise<Kysely<Database>> {
     connectionTimeoutMillis: 5_000,
   });
 
+  // Schema bootstrap: las migraciones crean `identity.users`, `census.homes`,
+  // etc. (un schema por bounded context). Sin search_path explicito, las
+  // queries de Kysely (e.g. `db.selectFrom('users')`) resuelven a
+  // `public.users` por defecto, lo que falla con
+  // `relation "users" does not exist` en runtime.
+  //
+  // Solucion: emitir `SET search_path` en cada nueva conexion del pool via
+  // el hook `connectionConfig`. Usamos `identity,public` (no solo
+  // `identity`) por si alguna query referencie tablas del schema `public`
+  // (e.g. `orion_migrations`).
+  // Una alternativa (kysely `currentSchema`) afecta solo a Kysely y no a
+  // las queries crudas (e.g. node-pg-migrate corre con su propio pool);
+  // `SET search_path` a nivel de sesion es la unica opcion que cubre ambos.
+  cachedPool.on('connect', (client) => {
+    void client.query('SET search_path TO identity, public');
+  });
+
   cachedDb = new Kysely<Database>({
     dialect: new PostgresDialect({ pool: cachedPool }),
   });
