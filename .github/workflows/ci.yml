@@ -138,14 +138,35 @@ jobs:
             cfn_nag_scan --input-path "$tpl" --output-format txt
           done
 
+  # Custom check: every AWS::Lambda::Permission MUST specify SourceArn or
+  # SourceAccount to scope invocation to a specific API Gateway / event
+  # source. cfn-nag 0.8.10 does NOT have a built-in rule for this; the
+  # custom script fills the gap. See orion-infrastructure ADR 0007 for
+  # the rationale (cross-API confusion defense).
+  lambda-permission-source-arn:
+    name: lambda-permission-source-arn
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Verify every Lambda::Permission has SourceArn/SourceAccount
+        run: python scripts/check-lambda-permission-source-arn.py
+
   # ---------------------------------------------------------------------------
   # Aggregate 'lint' job - satisfies ruleset 19160658's required [lint, build,
   # test] gate without forcing a ruleset update. The job itself does nothing
-  # except report whether all 5 atomic checks passed.
+  # except report whether all 6 atomic checks passed.
   # ---------------------------------------------------------------------------
   lint:
     name: lint
-    needs: [actionlint, gitleaks, yamllint, eslint, cfn-nag]
+    needs: [actionlint, gitleaks, yamllint, eslint, cfn-nag, lambda-permission-source-arn]
     runs-on: ubuntu-latest
     if: ${{ always() }}
     steps:
@@ -157,6 +178,7 @@ jobs:
             "yamllint=${{ needs.yamllint.result }}"
             "eslint=${{ needs.eslint.result }}"
             "cfn-nag=${{ needs.cfn-nag.result }}"
+            "lambda-permission-source-arn=${{ needs.lambda-permission-source-arn.result }}"
           )
           FAILED=0
           for pair in "${RESULTS[@]}"; do
