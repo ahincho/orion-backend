@@ -125,7 +125,7 @@ jobs:
           bundler-cache: false
 
       - name: Install cfn-nag
-        run: gem install cfn_nag --no-document
+        run: gem install cfn-nag --no-document
 
       - name: Scan SAM templates
         run: |
@@ -135,7 +135,7 @@ jobs:
           for tpl in "${TEMPLATES[@]}"; do
             [ -f "$tpl" ] || continue
             echo "=== Scanning $tpl ==="
-            cfn_nag_scan --input-path "$tpl" --output-format text
+            cfn-nag-scan --input-path "$tpl" --output-format text
           done
 
   # ---------------------------------------------------------------------------
