@@ -16,3 +16,14 @@ export interface AuthContext {
   /** Raw JWT claims for advanced use cases (rarely needed). */
   rawClaims: Record<string, unknown>;
 }
+
+/**
+ * Shape of the Lambda Authorizer context attached to event.requestContext.authorizer.lambda.
+ * The Lambda Authorizer function returns this as its `context` field.
+ */
+export interface LambdaAuthorizerContext {
+  userId?: string;
+  email?: string;
+  role?: string;
+  [key: string]: unknown;
+}

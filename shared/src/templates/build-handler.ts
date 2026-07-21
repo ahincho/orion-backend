@@ -143,7 +143,7 @@ export function buildHandler<TInput, TOutput>(
             ? (JSON.parse(body) as unknown)
             : body;
       const input = validatePayload(config.inputSchema, rawBody) as TInput;
-      const auth = config.requireAuth ? requireAuth(event, config.logger) : undefined;
+      const auth = config.requireAuth ? await requireAuth(event, config.logger) : undefined;
       const result = await config.handler(input, event, auth);
       const requestId = event.requestContext?.requestId ?? 'unknown';
       return {
