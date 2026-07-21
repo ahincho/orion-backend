@@ -154,6 +154,19 @@ export function buildHandler<TInput, TOutput>(
     } catch (err) {
       const requestId = event.requestContext?.requestId ?? 'unknown';
       const statusCode = err instanceof ApiError ? err.statusCode : 500;
+      // Log unhandled exceptions so they appear in CloudWatch logs. The
+      // httpErrorHandler middleware logs ApiError; for non-ApiError errors
+      // (e.g. DB failures, unexpected throws) we need an explicit log call
+      // or the error stays invisible in Lambda logs.
+      if (!(err instanceof ApiError)) {
+        config.logger.error('unhandled exception', {
+          err,
+          requestId,
+          routeKey: event.routeKey,
+          httpMethod: event.requestContext?.http?.method,
+          path: event.rawPath,
+        });
+      }
       return {
         statusCode,
         body: JSON.stringify(formatError(err, requestId)),
