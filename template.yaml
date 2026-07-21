@@ -50,6 +50,11 @@ Parameters:
     Description: ARN of the ORION EventBridge bus.
     Default: ''
 
+  ApigatewayAuthorizerInvokeRoleArn:
+    Type: String
+    Description: 'ARN of the IAM role that API Gateway assumes when invoking the Lambda Authorizer. This role must trust `apigateway.amazonaws.com` and grant `lambda:InvokeFunction` on the authorizer Lambda. The role is provisioned by orion-infrastructure (currently named `apigateway-authorizer-invoke-role-dev`, pending Terraform module rename; see orion-infrastructure follow-up).'
+    Default: 'arn:aws:iam::681526276858:role/apigateway-authorizer-invoke-role-dev'
+
   # Phase 1 - VPC attachment for Lambda functions.
   VpcSubnetIds:
     Type: String
@@ -128,20 +133,27 @@ Resources:
       Name: orion-jwt-authorizer
       AuthorizerType: REQUEST
       AuthorizerUri: !GetAtt AuthorizerStack.Outputs.AuthorizerFunctionInvokeArn
-      AuthorizerCredentialsArn: !GetAtt AuthorizerStack.Outputs.AuthorizerFunctionRoleArn
+      # AuthorizerCredentialsArn: IAM role que API Gateway ASSUME para invocar
+      # el authorizer Lambda. Distinto del AuthorizerFunctionRole (el Lambda
+      # execution role del authorizer, que solo `lambda.amazonaws.com` puede
+      # asumir). Sin este role dedicado, API Gateway no puede invocar el
+      # authorizer y devuelve 500 en todas las rutas protegidas.
+      AuthorizerCredentialsArn: !Ref ApigatewayAuthorizerInvokeRoleArn
       IdentitySource:
         - $request.header.Authorization
       AuthorizerResultTtlInSeconds: 300
       AuthorizerPayloadFormatVersion: '2.0'
-      # EnableSimpleResponses: NO. El authorizer devuelve context con
-      # userId/email/role (formato `APIGatewaySimpleAuthorizerWithContextResult`).
-      # Con `EnableSimpleResponses: true`, API Gateway espera unicamente
-      # `{isAuthorized: true/false}` y rechaza/ignora el context, lo que
-      # rompe la propagacion al target Lambda (que lee `event.requestContext
-      # .authorizer.lambda.userId` en requireAuth) y hace que API Gateway
-      # devuelva 500 "Internal Server Error" en rutas protegidas.
-      # Sin EnableSimpleResponses, API Gateway usa el formato IAM policy
-      # completo que SI soporta context.
+      # EnableSimpleResponses: SI (default). El authorizer devuelve el formato
+      # simple `{isAuthorized, context}` (ver contexts/authorizer/src/handler.ts).
+      # Habilitar simple responses alinea API Gateway con el formato del
+      # handler y permite que el `context` (userId/email/role) llegue al
+      # target Lambda via `event.requestContext.authorizer.lambda.*`.
+      # Sin simple responses, API Gateway espera un IAM policy con
+      # `principalId` (que el handler no devuelve) y devuelve 500
+      # "Policy response did not include principalId".
+      # Nota: `EnableSimpleResponses` es INMUTABLE despues de crear el
+      # authorizer. Si se necesita cambiar, hay que borrar + recrear el
+      # authorizer (no es actualizable via UpdateAuthorizer).
 
   # ---------------------------------------------------------------------------
   # Identity bounded context (nested stack) - users + JWT issuance
@@ -321,6 +333,28 @@ Resources:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !GetAtt CensusStack.Outputs.CensusAssignFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
+
+  # ---------------------------------------------------------------------------
+  # Authorizer Lambda invoke permission.
+  # The authorizer Lambda is invoked by API Gateway via the role referenced in
+  # `ApiGatewayAuthorizer.AuthorizerCredentialsArn` (see
+  # ApigatewayAuthorizerInvokeRoleArn parameter). That role is granted
+  # `lambda:InvokeFunction` on the authorizer Lambda in
+  # orion-infrastructure (currently a manually-created role; pending Terraform
+  # module). However, we ALSO declare this AWS::Lambda::Permission resource as
+  # a defense-in-depth measure: it explicitly permits API Gateway (any
+  # source-arn scoped to this HTTP API) to invoke the authorizer function.
+  # Without it, manual changes to the authorizer invoke role would silently
+  # break all protected routes (the authorizer is on the hot path of every
+  # protected request).
+  # ---------------------------------------------------------------------------
+  AuthorizerFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt AuthorizerStack.Outputs.AuthorizerFunctionArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
