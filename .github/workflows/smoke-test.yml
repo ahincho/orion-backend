@@ -1,15 +1,20 @@
 # =============================================================================
 # Smoke Test - orion-backend-dev
 # =============================================================================
-# Triggered manually via workflow_dispatch. Runs the full happy path against
-# the deployed API to validate:
-#   1. POST /v1/auth/register (expect 201)
+# Triggers:
+#   - workflow_dispatch (manual): ad-hoc validation against any stack.
+#   - workflow_run on CD - Deploy completed-successfully-on-main: auto-run
+#     after every deploy to dev. Provides a green/red signal alongside the
+#     deploy run.
+#
+# Validates the full happy path against the deployed API:
+#   1. POST /v1/auth/register (expect 200 or 201)
 #   2. POST /v1/auth/login (expect 200 + JWT)
 #   3. GET /v1/users/me with Bearer (expect 200 + user data)
 #   4. GET /v1/users/me without Bearer (expect 401)
-#   5. GET /v1/users/me with malformed Bearer (expect 401)
+#   5. GET /v1/users/me with malformed Bearer (expect 401 or 403)
 #
-# This guards against:
+# Guards against:
 #   - Authorizer Lambda silently breaking (login would still 200, /me would 500/401).
 #   - Lambda::Permission SourceArn missing (cross-API confusion returns, see ADR 0007).
 #   - VPC / SG / subnet drift breaking the Lambda -> RDS path.
@@ -20,10 +25,11 @@
 # (see deploy.yml "Publish API URL to SSM" step). Can be overridden via
 # workflow_dispatch input for ad-hoc testing against a different stack.
 #
-# Each run leaves a test user in the DB
-# (email = smoke-<unix-ts>@orion-test.local). Dev environment; cleanup is
-# manual if needed (no automatic DELETE since the runner has no VPC access
-# to the RDS instance and there is no /v1/users/me DELETE endpoint yet).
+# Cleanup: after the assertions pass, a dev-only Lambda
+# (orion-identity-smoke-test-cleanup-dev) is invoked directly via
+# `aws lambda invoke` to delete the just-created test user. The cleanup is
+# best-effort (continue-on-error) so a transient cleanup failure does not
+# mask a passing smoke test; the deleted count is logged for audit.
 # =============================================================================
 
 name: Smoke Test - orion-backend-dev
@@ -35,6 +41,10 @@ on:
         description: 'Override API URL (skip SSM lookup for ad-hoc testing)'
         required: false
         type: string
+  workflow_run:
+    workflows: ["CD - Deploy"]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: read
@@ -47,6 +57,12 @@ concurrency:
 jobs:
   smoke-test:
     name: E2E smoke test
+    # workflow_run triggers this on the default branch regardless of the
+    # triggering workflow's conclusion. Skip when the deploy failed (or was
+    # cancelled) since the API is presumably inconsistent / not deployed.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     environment: dev
     steps:
@@ -163,4 +179,40 @@ jobs:
 
           echo ""
           echo "=== ALL SMOKE TESTS PASSED ==="
-          echo "Test user: ${EMAIL} (left in DB; cleanup is manual for dev)"
+          echo "Test user: ${EMAIL}"
+
+      - name: Cleanup test user (best-effort)
+        # Best-effort: if cleanup fails (e.g. Lambda cold start blip, transient
+        # RDS hiccup) the smoke test itself already passed and should stay
+        # green. Continue-on-error so a broken cleanup does not mask a
+        # working API. Cleanup Lambda runs in the VPC so the GH runner does
+        # not need direct RDS access.
+        if: success()
+        env:
+          FUNCTION_NAME: orion-identity-smoke-test-cleanup-dev
+        run: |
+          set +e
+          echo "=== Cleanup: invoking ${FUNCTION_NAME} ==="
+          aws lambda invoke \
+            --function-name "${FUNCTION_NAME}" \
+            --region us-east-1 \
+            --payload '{"prefix":"smoke-"}' \
+            --cli-binary-format raw-in-base64-out \
+            --output json \
+            /tmp/cleanup.json > /tmp/cleanup-invoke.json 2>&1
+          INVOKE_EXIT=$?
+          if [ $INVOKE_EXIT -ne 0 ]; then
+            echo "::warning::Cleanup invoke failed (exit=$INVOKE_EXIT); smoke test itself passed. Inspect /tmp/cleanup-invoke.json."
+            cat /tmp/cleanup-invoke.json
+            exit 0
+          fi
+          STATUS_CODE=$(jq -r '.StatusCode // "unknown"' /tmp/cleanup-invoke.json)
+          if [ "$STATUS_CODE" != "200" ]; then
+            echo "::warning::Cleanup StatusCode=$STATUS_CODE; smoke test itself passed."
+            cat /tmp/cleanup-invoke.json
+            exit 0
+          fi
+          cat /tmp/cleanup.json
+          echo ""
+          DELETED_COUNT=$(jq -r '.count // 0' /tmp/cleanup.json)
+          echo "Cleanup removed ${DELETED_COUNT} test user(s) (prefix=smoke-)"
