@@ -82,7 +82,8 @@ jobs:
   # already reusable. The cfn-nag and lambda-permission-source-arn recipes
   # were promoted in spark-match-01-devops PR #80 (merged to dev) and
   # #82 (promoted to main). Validated end-to-end in orion-backend PRs #102,
-  # #104; inline copies removed here.
+  # #104; inline copies removed here. cfn-nag recipe updated to per-file
+  # scan in spark-match-01-devops PR #83 (avoids the .aws-sam/build/ output).
   # ---------------------------------------------------------------------------
   actionlint:
     name: actionlint
