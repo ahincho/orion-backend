@@ -74,10 +74,16 @@ jobs:
         run: npm ci
 
   # ---------------------------------------------------------------------------
-  # Lint & Security - 5 atomic checks: 4 reusables from spark-match-01-devops
-  # + cfn-nag inline (no reusable yet in spark-match-01-devops).
-  # Each runs against this repo's code with environment-name=ci (informational
-  # only; the recipes don't gate on the GH Environment for these checks).
+  # Lint & Security - 6 atomic checks, all delegated to reusable workflows in
+  # spark-match-01-devops (per docs/VERSIONING.md: callers pin by env, @main
+  # for prod-stable recipes, @dev for in-flight changes).
+  #
+  # The 4 ecosystem recipes (actionlint, gitleaks, yamllint, eslint) were
+  # already reusable. The cfn-nag and lambda-permission-source-arn recipes
+  # were promoted in spark-match-01-devops PR #80 (merged to dev) and
+  # #82 (promoted to main). Validated end-to-end in orion-backend PRs #102,
+  # #104; inline copies removed here. cfn-nag recipe updated to per-file+no-config-path
+  # scan in spark-match-01-devops PR #83 (avoids the .aws-sam/build/ output).
   # ---------------------------------------------------------------------------
   actionlint:
     name: actionlint
@@ -108,56 +114,26 @@ jobs:
   # Critical rules enforced (see .cfn-nag.yml for the full allowlist/denylist):
   #   F36: AWS::Lambda::Permission MUST specify SourceArn (cross-API confusion).
   #   F4:  IAM role trust policies MUST NOT allow wildcard service principal.
-  # cfn-nag exit code is non-zero when any FAILING rule fires, so the job
-  # fails the build automatically when violations are introduced.
+  # Recipe: spark-match/spark-match-01-devops/.github/workflows/cfn-nag.yml@main
+  # (Ruby 3.3 + cfn-nag 0.8.10 pinned; configurable via inputs).
   cfn-nag:
     name: cfn-nag
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Set up Ruby 3.3
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3'
-          bundler-cache: false
-
-      - name: Install cfn-nag
-        run: gem install cfn-nag --no-document
-
-      - name: Scan SAM templates
-        run: |
-          set -euo pipefail
-          shopt -s globstar nullglob
-          TEMPLATES=( template.yaml contexts/**/template.yaml )
-          for tpl in "${TEMPLATES[@]}"; do
-            [ -f "$tpl" ] || continue
-            echo "=== Scanning $tpl ==="
-            cfn_nag_scan --input-path "$tpl" --output-format txt
-          done
+    uses: spark-match/spark-match-01-devops/.github/workflows/cfn-nag.yml@main
+    with:
+      environment-name: ci
 
   # Custom check: every AWS::Lambda::Permission MUST specify SourceArn or
-  # SourceAccount to scope invocation to a specific API Gateway / event
-  # source. cfn-nag 0.8.10 does NOT have a built-in rule for this; the
-  # custom script fills the gap. See orion-infrastructure ADR 0007 for
-  # the rationale (cross-API confusion defense).
+  # SourceAccount. cfn-nag 0.8.10 does NOT have a built-in rule for this; the
+  # Python stdlib script (now in spark-match-01-devops/scripts/) fills the gap.
+  # See orion-infrastructure ADR 0007 for the rationale (cross-API confusion
+  # defense).
+  # Recipe:
+  #   spark-match/spark-match-01-devops/.github/workflows/lambda-permission-source-arn.yml@main
   lambda-permission-source-arn:
     name: lambda-permission-source-arn
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-
-      - name: Verify every Lambda::Permission has SourceArn/SourceAccount
-        run: python scripts/check-lambda-permission-source-arn.py
+    uses: spark-match/spark-match-01-devops/.github/workflows/lambda-permission-source-arn.yml@main
+    with:
+      environment-name: ci
 
   # ---------------------------------------------------------------------------
   # Aggregate 'lint' job - satisfies ruleset 19160658's required [lint, build,
