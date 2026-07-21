@@ -133,7 +133,15 @@ Resources:
         - $request.header.Authorization
       AuthorizerResultTtlInSeconds: 300
       AuthorizerPayloadFormatVersion: '2.0'
-      EnableSimpleResponses: true
+      # EnableSimpleResponses: NO. El authorizer devuelve context con
+      # userId/email/role (formato `APIGatewaySimpleAuthorizerWithContextResult`).
+      # Con `EnableSimpleResponses: true`, API Gateway espera unicamente
+      # `{isAuthorized: true/false}` y rechaza/ignora el context, lo que
+      # rompe la propagacion al target Lambda (que lee `event.requestContext
+      # .authorizer.lambda.userId` en requireAuth) y hace que API Gateway
+      # devuelva 500 "Internal Server Error" en rutas protegidas.
+      # Sin EnableSimpleResponses, API Gateway usa el formato IAM policy
+      # completo que SI soporta context.
 
   # ---------------------------------------------------------------------------
   # Identity bounded context (nested stack) - users + JWT issuance
