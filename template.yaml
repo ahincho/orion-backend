@@ -52,8 +52,11 @@ Parameters:
 
   ApigatewayAuthorizerInvokeRoleArn:
     Type: String
-    Description: 'ARN of the IAM role that API Gateway assumes when invoking the Lambda Authorizer. This role must trust `apigateway.amazonaws.com` and grant `lambda:InvokeFunction` on the authorizer Lambda. The role is provisioned by orion-infrastructure (currently named `apigateway-authorizer-invoke-role-dev`, pending Terraform module rename; see orion-infrastructure follow-up).'
-    Default: 'arn:aws:iam::681526276858:role/apigateway-authorizer-invoke-role-dev'
+    Description: 'ARN of the IAM role that API Gateway assumes when invoking the Lambda Authorizer. This role must trust `apigateway.amazonaws.com` and grant `lambda:InvokeFunction` on the authorizer Lambda. The role is provisioned by orion-infrastructure (`modules/iam-apigateway-authorizer-invoke/`, published as SSM param `/orion/iam/apigateway-authorizer-invoke-role-arn`). The `CD - Deploy` workflow resolves it from SSM and passes it via `--parameter-overrides`; no Default here (would be a placeholder that goes stale on role rotation).'
+    # No Default: must be supplied at deploy time via --parameter-overrides.
+    # orion-infrastructure publishes the value to SSM and the CD workflow
+    # reads it from there. Failing fast on missing param is better than
+    # silently using a stale or wrong role ARN.
 
   # Phase 1 - VPC attachment for Lambda functions.
   VpcSubnetIds:
