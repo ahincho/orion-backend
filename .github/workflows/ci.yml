@@ -135,7 +135,7 @@ jobs:
           for tpl in "${TEMPLATES[@]}"; do
             [ -f "$tpl" ] || continue
             echo "=== Scanning $tpl ==="
-            cfn-nag-scan --input-path "$tpl" --output-format text
+            cfn_nag_scan --input-path "$tpl" --output-format text
           done
 
   # ---------------------------------------------------------------------------
