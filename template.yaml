@@ -363,7 +363,8 @@ Resources:
       FunctionName: !GetAtt AuthorizerStack.Outputs.AuthorizerFunctionArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
+      # SourceArn REMOVED to verify CI gate (will be restored)
+      # SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
 
   # ---------------------------------------------------------------------------
   # Lambda Layers - shared kernel + runtime dependencies
