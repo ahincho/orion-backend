@@ -97,7 +97,7 @@ jobs:
           REGISTER_HTTP=$(curl -sS -o /tmp/register.json -w "%{http_code}" \
             -X POST "${API_URL}/v1/auth/register" \
             -H "Content-Type: application/json" \
-            -d "{\"email\":\"${EMAIL}\",\"password\":\"${PASSWORD}\"}")
+            -d "{\"email\":\"${EMAIL}\",\"fullName\":\"Smoke Test\",\"password\":\"${PASSWORD}\"}")
           echo "Status: $REGISTER_HTTP"
           cat /tmp/register.json
           echo ""
