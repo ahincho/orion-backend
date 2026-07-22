@@ -1,46 +1,12 @@
 # =============================================================================
 # Migrations - manual operator trigger (orion-backend)
 # =============================================================================
-# This wrapper exposes a workflow_dispatch UI for ops to invoke the
-# orion-identity-migrate-<env> Lambda on demand (hotfix migrations, status
-# checks before prod approval, etc.) without going through a full SAM
-# deploy.
-#
-# The actual Lambda invoke logic is the `migrations.yml` reusable in
-# spark-match-01-devops (per docs/VERSIONING.md). This file is just a
-# thin shim that:
-#   1. Hard-codes the function-name pattern (orion-identity-migrate-<env>)
-#      so the operator does not have to type it.
-#   2. Presents a single-choice `environment` input that maps to a GH
-#      Environment gate (so the same approval flow as deploy applies).
-#   3. Forwards AWS_DEPLOY_ROLE_ARN from the chosen environment's secrets.
-#
-# Environment gate (CRITICAL - see spark-match-01-devops PR #96):
-#   The reusable workflow declared `environment: <name>` on its job, but
-#   per GitHub Actions semantics, env declared in a reusable workflow is
-#   resolved in the CALLEE repo (spark-match-01-devops), which has no
-#   `dev` env, so the lookup silently failed and the run produced zero
-#   jobs (see orion-backend run IDs 29942603911, 29955830573). The cookbook
-#   recipe removed the gate in PR #96, so this wrapper now enforces it
-#   itself.
-#
-#   Why a separate `gate` job instead of `environment:` on the `migrate`
-#   job: `environment:` is NOT in the supported-key list for jobs that
-#   call a reusable workflow via `uses:` (see
-#   https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations#supported-keywords-for-jobs-that-call-a-reusable-workflow).
-#   A regular preflight job in the caller repo is the cleanest place for
-#   the gate: any GH Environment protection rules (required reviewers,
-#   wait timer, branch restrictions) are evaluated there.
-#
-# Pin: @main. The cookbook recipe is now stable on main (PR #97 promoted
-# PR #96's fix), so this wrapper pins to @main per spark-match-01-devops/
-# docs/VERSIONING.md.
-#
-# To add prod support:
-#   1. Add `prod` to the `environment` choice below.
-#   2. Create a GH Environment named `prod` in this repo with
-#      AWS_DEPLOY_ROLE_ARN (the prod migrate role).
-#   3. Provision `orion-identity-migrate-prod` Lambda in the prod stack.
+# TEMPORARY MINIMAL VERSION for PR #124 diagnostic. Replaces the
+# preflight gate + migrate pattern with a single job that calls the
+# cookbook recipe directly. If this works, the issue was interaction
+# between gate + migrate (likely needs: gate blocking uses:). If
+# migrate still does not appear in jobs API, the issue is in the
+# uses: invocation itself (cross-owner secret handshake).
 # =============================================================================
 
 name: Migrations - orion-backend
@@ -49,45 +15,19 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Target environment (GH Environment gate + function name suffix).'
+        description: 'Target environment.'
         type: choice
         required: true
         default: 'dev'
         options:
           - dev
 
-concurrency:
-  # Same key as the cookbook migrations.yml reusable - prevents racing
-  # migrators against the same DB. See spark-match-01-devops
-  # .github/workflows/migrations.yml header for the rationale.
-  group: migrations-${{ inputs.environment }}
-  cancel-in-progress: false
-
 permissions:
   contents: read
   id-token: write
 
 jobs:
-  # Preflight gate that enforces the GH Environment approval flow in the
-  # caller repo (this one). Runs as a no-op echo step; the gate value is
-  # that the job must clear the `environment: <name>` approval rules before
-  # it can start.
-  gate:
-    name: "gate (env=${{ inputs.environment }})"
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
-    steps:
-      - name: Environment gate cleared
-        run: |
-          set -euo pipefail
-          echo "Environment '${{ inputs.environment }}' gate approved."
-          echo "Proceeding to invoke the migrator Lambda via the cookbook recipe."
-
-  # Invoke the cookbook's migrations.yml reusable to actually run the
-  # migrator Lambda. NO `needs:` on this job - sequencing is enforced
-  # by the gate's environment: approval rules (PR #124 diagnostic).
   migrate:
-    name: "migrate (env=${{ inputs.environment }})"
     uses: spark-match/spark-match-01-devops/.github/workflows/migrations.yml@main
     with:
       environment-name: ${{ inputs.environment }}
