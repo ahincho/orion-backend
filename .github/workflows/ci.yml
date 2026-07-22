@@ -268,7 +268,7 @@ jobs:
   # ---------------------------------------------------------------------------
   migrations-dry-run:
     name: migrations-dry-run
-    uses: spark-match/spark-match-01-devops/.github/workflows/migrations-dry-run.yml@dev
+    uses: spark-match/spark-match-01-devops/.github/workflows/migrations-dry-run.yml@debug/migrate-dry-run
     with:
       environment-name: ci
       postgres-version: '16'
