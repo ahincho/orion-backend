@@ -14,7 +14,7 @@ describe('validatePayload', () => {
     expect(result).toEqual({ email: 'a@b.com', age: 30 });
   });
 
-  it('throws ApiError.badRequest on invalid input', () => {
+  it('throws ApiError.badRequest on invalid input with one ErrorDetail per Zod issue', () => {
     try {
       validatePayload(schema, { email: 'not-an-email', age: -1 });
     } catch (err) {
@@ -22,8 +22,14 @@ describe('validatePayload', () => {
       const apiErr = err as ApiError;
       expect(apiErr.statusCode).toBe(400);
       expect(apiErr.code).toBe('bad_request');
-      const issues = (apiErr.details as { issues: { path: string; message: string }[] }).issues;
-      expect(issues.length).toBeGreaterThan(0);
+      expect(Array.isArray(apiErr.details)).toBe(true);
+      expect(apiErr.details.length).toBeGreaterThan(0);
+      for (const detail of apiErr.details) {
+        expect(detail.code).toMatch(/^validation\./);
+        expect(typeof detail.message).toBe('string');
+      }
+      expect(apiErr.details.some((d) => d.path === 'email')).toBe(true);
+      expect(apiErr.details.some((d) => d.path === 'age')).toBe(true);
     }
   });
 });

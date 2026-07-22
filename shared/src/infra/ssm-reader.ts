@@ -6,9 +6,15 @@
 //
 // Use createSsmReader() in composition roots. Never instantiate the
 // SSM client directly in services.
+//
+// All AWS SDK failures are surfaced as ApiError.awsUnavailable so callers
+// receive a structured ErrorDetail (code: aws.unavailable, meta.dependency).
+// Missing required parameters are surfaced as ApiError.internal because
+// they indicate a deploy/configuration bug, not an availability incident.
 // =============================================================================
 
 import { GetParametersCommand, GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
+import { ApiError } from '../http/api-error.js';
 
 const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -58,7 +64,12 @@ export function createSsmReader(config: SsmReaderConfig = {}): SsmReader {
     // v3.1090.0) omitting it returns the ciphertext for SecureString
     // parameters. The Lambda role still needs kms:Decrypt on the SSM key
     // (alias/aws/ssm) for decryption to actually happen.
-    const result = await client.send(new GetParameterCommand({ Name: name, WithDecryption: true }));
+    let result;
+    try {
+      result = await client.send(new GetParameterCommand({ Name: name, WithDecryption: true }));
+    } catch (err) {
+      throw ApiError.awsUnavailable('SSM', err);
+    }
     const value = result.Parameter?.Value;
     if (value !== undefined) {
       setCached(name, value);
@@ -69,7 +80,13 @@ export function createSsmReader(config: SsmReaderConfig = {}): SsmReader {
   async function getRequiredString(name: string): Promise<string> {
     const value = await getString(name);
     if (value === undefined) {
-      throw new Error(`Required SSM parameter not found: ${name}`);
+      throw new ApiError(500, `Required SSM parameter not found: ${name}`, {
+        details: {
+          code: 'config.ssm_missing',
+          message: `Required SSM parameter not found: ${name}`,
+          path: name,
+        },
+      });
     }
     return value;
   }
@@ -81,9 +98,14 @@ export function createSsmReader(config: SsmReaderConfig = {}): SsmReader {
 
   // Helper for GetParametersCommand (batch) - reserved for future use
   async function getMany(_names: string[]): Promise<Map<string, string>> {
-    const result = await client.send(
-      new GetParametersCommand({ Names: [], WithDecryption: false }),
-    );
+    let result;
+    try {
+      result = await client.send(
+        new GetParametersCommand({ Names: [], WithDecryption: false }),
+      );
+    } catch (err) {
+      throw ApiError.awsUnavailable('SSM', err);
+    }
     const map = new Map<string, string>();
     for (const p of result.Parameters ?? []) {
       if (p.Name && p.Value !== undefined) {

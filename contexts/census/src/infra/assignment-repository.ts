@@ -1,8 +1,13 @@
 // =============================================================================
 // Assignment repository
 // =============================================================================
+// All kysely calls are wrapped with withDbErrorMapping so any driver-level
+// failure surfaces as ApiError.dbUnavailable (code: db.unavailable,
+// meta.operation).
+// =============================================================================
 
 import type { Kysely } from 'kysely';
+import { withDbErrorMapping } from '@orion/shared/infra';
 import type { Database } from './database.js';
 import { type Assignment, type AssignmentStatus } from '../domain/assignment.js';
 
@@ -58,58 +63,68 @@ function mapRowToAssignment(row: AssignmentRow): Assignment {
 export function createAssignmentRepository(db: Kysely<Database>): AssignmentRepository {
   return {
     async create(input) {
-      const row = await db
-        .insertInto('assignments')
-        .values({
-          home_id: input.homeId,
-          assignee_id: input.assigneeId,
-          assigned_by: input.assignedBy,
-          scheduled_date: input.scheduledDate,
-          notes: input.notes ?? null,
-          status: 'pending',
-        })
-        .returningAll()
-        .executeTakeFirstOrThrow();
-      return mapRowToAssignment(row);
+      return withDbErrorMapping('assignments.create', async () => {
+        const row = await db
+          .insertInto('assignments')
+          .values({
+            home_id: input.homeId,
+            assignee_id: input.assigneeId,
+            assigned_by: input.assignedBy,
+            scheduled_date: input.scheduledDate,
+            notes: input.notes ?? null,
+            status: 'pending',
+          })
+          .returningAll()
+          .executeTakeFirstOrThrow();
+        return mapRowToAssignment(row);
+      });
     },
 
     async findById(id) {
-      const row = await db
-        .selectFrom('assignments')
-        .selectAll()
-        .where('id', '=', id)
-        .executeTakeFirst();
-      return row ? mapRowToAssignment(row) : null;
+      return withDbErrorMapping('assignments.findById', async () => {
+        const row = await db
+          .selectFrom('assignments')
+          .selectAll()
+          .where('id', '=', id)
+          .executeTakeFirst();
+        return row ? mapRowToAssignment(row) : null;
+      });
     },
 
     async findByHomeAndDate(homeId, scheduledDate) {
-      const row = await db
-        .selectFrom('assignments')
-        .selectAll()
-        .where('home_id', '=', homeId)
-        .where('scheduled_date', '=', scheduledDate)
-        .executeTakeFirst();
-      return row ? mapRowToAssignment(row) : null;
+      return withDbErrorMapping('assignments.findByHomeAndDate', async () => {
+        const row = await db
+          .selectFrom('assignments')
+          .selectAll()
+          .where('home_id', '=', homeId)
+          .where('scheduled_date', '=', scheduledDate)
+          .executeTakeFirst();
+        return row ? mapRowToAssignment(row) : null;
+      });
     },
 
     async listByAssigneeAndDateRange(assigneeId, fromDate, toDate) {
-      const rows = await db
-        .selectFrom('assignments')
-        .selectAll()
-        .where('assignee_id', '=', assigneeId)
-        .where('scheduled_date', '>=', fromDate)
-        .where('scheduled_date', '<=', toDate)
-        .orderBy('scheduled_date', 'asc')
-        .execute();
-      return rows.map(mapRowToAssignment);
+      return withDbErrorMapping('assignments.listByAssigneeAndDateRange', async () => {
+        const rows = await db
+          .selectFrom('assignments')
+          .selectAll()
+          .where('assignee_id', '=', assigneeId)
+          .where('scheduled_date', '>=', fromDate)
+          .where('scheduled_date', '<=', toDate)
+          .orderBy('scheduled_date', 'asc')
+          .execute();
+        return rows.map(mapRowToAssignment);
+      });
     },
 
     async updateStatus(id, status) {
-      await db
-        .updateTable('assignments')
-        .set({ status, updated_at: new Date() })
-        .where('id', '=', id)
-        .execute();
+      await withDbErrorMapping('assignments.updateStatus', async () => {
+        await db
+          .updateTable('assignments')
+          .set({ status, updated_at: new Date() })
+          .where('id', '=', id)
+          .execute();
+      });
     },
   };
 }

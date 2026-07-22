@@ -2,10 +2,13 @@
 // User repository - typed CRUD via kysely
 // =============================================================================
 // Interface-driven factory for testability (services depend on the
-// interface, not the concrete implementation).
+// interface, not the concrete implementation). All kysely calls are wrapped
+// with withDbErrorMapping so any driver-level failure surfaces as
+// ApiError.dbUnavailable (code: db.unavailable, meta.operation).
 // =============================================================================
 
 import type { Kysely } from 'kysely';
+import { withDbErrorMapping } from '@orion/shared/infra';
 import type { Database } from './database.js';
 import { type CreateUserInput, type User } from '../domain/user.js';
 
@@ -44,54 +47,64 @@ function mapRowToUser(row: UserRow): User {
 export function createUserRepository(db: Kysely<Database>): UserRepository {
   return {
     async findByEmail(email: string) {
-      const row = await db
-        .selectFrom('users')
-        .selectAll()
-        .where('email', '=', email.toLowerCase())
-        .executeTakeFirst();
-      return row ? mapRowToUser(row) : null;
+      return withDbErrorMapping('users.findByEmail', async () => {
+        const row = await db
+          .selectFrom('users')
+          .selectAll()
+          .where('email', '=', email.toLowerCase())
+          .executeTakeFirst();
+        return row ? mapRowToUser(row) : null;
+      });
     },
 
     async findById(id: string) {
-      const row = await db
-        .selectFrom('users')
-        .selectAll()
-        .where('id', '=', id)
-        .executeTakeFirst();
-      return row ? mapRowToUser(row) : null;
+      return withDbErrorMapping('users.findById', async () => {
+        const row = await db
+          .selectFrom('users')
+          .selectAll()
+          .where('id', '=', id)
+          .executeTakeFirst();
+        return row ? mapRowToUser(row) : null;
+      });
     },
 
     async create(input) {
-      const row = await db
-        .insertInto('users')
-        .values({
-          id: input.id,
-          email: input.email.toLowerCase(),
-          full_name: input.fullName,
-          password_hash: input.passwordHash,
-          role: input.role,
-          active: true,
-        })
-        .returningAll()
-        .executeTakeFirstOrThrow();
-      return mapRowToUser(row);
+      return withDbErrorMapping('users.create', async () => {
+        const row = await db
+          .insertInto('users')
+          .values({
+            id: input.id,
+            email: input.email.toLowerCase(),
+            full_name: input.fullName,
+            password_hash: input.passwordHash,
+            role: input.role,
+            active: true,
+          })
+          .returningAll()
+          .executeTakeFirstOrThrow();
+        return mapRowToUser(row);
+      });
     },
 
     async updatePassword(id, newPasswordHash) {
-      await db
-        .updateTable('users')
-        .set({ password_hash: newPasswordHash, updated_at: new Date() })
-        .where('id', '=', id)
-        .execute();
+      await withDbErrorMapping('users.updatePassword', async () => {
+        await db
+          .updateTable('users')
+          .set({ password_hash: newPasswordHash, updated_at: new Date() })
+          .where('id', '=', id)
+          .execute();
+      });
     },
 
     async existsByEmail(email) {
-      const row = await db
-        .selectFrom('users')
-        .select('id')
-        .where('email', '=', email.toLowerCase())
-        .executeTakeFirst();
-      return row !== undefined;
+      return withDbErrorMapping('users.existsByEmail', async () => {
+        const row = await db
+          .selectFrom('users')
+          .select('id')
+          .where('email', '=', email.toLowerCase())
+          .executeTakeFirst();
+        return row !== undefined;
+      });
     },
   };
 }

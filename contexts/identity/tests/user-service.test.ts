@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { createUserService, type JwtSigner } from '../src/service/user-service.js';
 import type { UserRepository } from '../src/infra/user-repository.js';
 import type { EventPublisher } from '@orion/shared/events';
-import { ApiError } from '@orion/shared/http';
+import type { ApiError } from '@orion/shared/http';
 import { verifyPassword } from '../src/password-hasher.js';
 import type { User } from '../src/domain/user.js';
 
@@ -80,7 +80,7 @@ describe('userService.register', () => {
     );
   });
 
-  it('rejects duplicate email', async () => {
+  it('rejects duplicate email with user.email_taken detail', async () => {
     const deps = makeDeps({ existingUser: makeUser({ email: 'taken@example.com' }) });
     const service = createUserService(deps);
 
@@ -91,7 +91,17 @@ describe('userService.register', () => {
         password: 'password123',
         role: 'asesor',
       }),
-    ).rejects.toThrow(ApiError);
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'conflict',
+      details: [
+        {
+          code: 'user.email_taken',
+          path: 'email',
+          value: 'taken@example.com',
+        },
+      ],
+    });
   });
 
   it('signs JWT with userId, email, role', async () => {
@@ -144,6 +154,38 @@ describe('userService.authenticate', () => {
       code: 'unauthorized',
     });
   });
+
+  it('rejects unknown user with auth.invalid_credentials detail (synthetic)', async () => {
+    const deps = makeDeps({ existingUser: null });
+    const service = createUserService(deps);
+
+    try {
+      await service.authenticate('unknown@example.com', 'password123');
+      expect.fail('expected authenticate to throw');
+    } catch (err) {
+      const apiErr = err as ApiError;
+      expect(apiErr.statusCode).toBe(401);
+      expect(apiErr.code).toBe('unauthorized');
+      // Synthetic detail from ApiError.unauthorized → factory ApiError.invalidCredentials
+      expect(apiErr.details[0]?.message).toBe('Invalid credentials');
+    }
+  });
+
+  it('rejects getById with user.not_found synthetic detail', async () => {
+    const deps = makeDeps({ existingUser: null });
+    const service = createUserService(deps);
+
+    try {
+      await service.getById('nonexistent');
+      expect.fail('expected getById to throw');
+    } catch (err) {
+      const apiErr = err as ApiError;
+      expect(apiErr.statusCode).toBe(404);
+      expect(apiErr.code).toBe('not_found');
+      expect(apiErr.message).toBe('User not found');
+      expect(apiErr.details).toEqual([{ code: 'not_found', message: 'User not found' }]);
+    }
+  });
 });
 
 describe('userService.changePassword', () => {
@@ -169,6 +211,13 @@ describe('userService.changePassword', () => {
 
     await expect(service.changePassword('u-1', 'wrong', 'new-password-123')).rejects.toMatchObject({
       statusCode: 401,
+      code: 'unauthorized',
+      details: [
+        {
+          code: 'auth.wrong_current_password',
+          path: 'currentPassword',
+        },
+      ],
     });
     expect(deps.userRepository.updatePassword).not.toHaveBeenCalled();
   });
