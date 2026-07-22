@@ -31,6 +31,7 @@ on:
       - '**.json'
       - '**.yaml'
       - '**.yml'
+      - 'migrations/**'
       - '.github/**'
       - 'package.json'
       - 'package-lock.json'
@@ -246,3 +247,28 @@ jobs:
           name: coverage-report
           path: coverage/
           retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Migrations dry-run - validates that every *.sql file in migrations/
+  # applies cleanly against a fresh Postgres 16 instance. Reusable from
+  # spark-match-01-devops (ecosystem layer, no AWS, no caller secrets).
+  #
+  # Why this exists: the V009 migration that landed in PR #117 was self-
+  # defeating (UPDATE role before DROP CONSTRAINT) and would have stayed
+  # broken indefinitely without the auto-migrate step added to deploy.yml
+  # in PR #120. A pure DDL bug of the same shape (e.g. ADD CONSTRAINT that
+  # contradicts an existing CHECK) would have passed the unit-test gate
+  # but failed the moment the production migrator ran. This job catches
+  # that class of bug in CI before the change reaches main.
+  #
+  # Pin: @dev. The recipe was added in spark-match-01-devops PR #91 and
+  # pinned to @dev per docs/VERSIONING.md. The consumer pins to @dev while
+  # the recipe is in-flight on @dev; will move to @main after cookbook PR
+  # dev -> main lands.
+  # ---------------------------------------------------------------------------
+  migrations-dry-run:
+    name: migrations-dry-run
+    uses: spark-match/spark-match-01-devops/.github/workflows/migrations-dry-run.yml@dev
+    with:
+      environment-name: ci
+      postgres-version: '16'
