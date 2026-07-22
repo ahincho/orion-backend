@@ -235,6 +235,61 @@ jobs:
             --region "$REGION"
           echo "Published API URL to SSM: $API_URL"
 
+      - name: Run identity migrations against dev RDS
+        # The IdentityMigrateFunction Lambda (contexts/identity/template.yaml)
+        # reads every *.sql file under dist/migrations and applies it in a single
+        # transaction; files already applied are skipped via the
+        # 'already exists' / 'duplicate key' error pattern (see
+        # contexts/identity/src/handlers/migrate.ts). This step runs after SAM
+        # deploy so the Lambda's bundled dist/migrations already contains every
+        # migration shipped in this push (sam build copied them from
+        # /migrations/ via contexts/identity/scripts/copy-package.js). Without
+        # this step the deploy pipeline would leave new CHECK constraints /
+        # new tables in the DB uncreated, and the next smoke test (which runs
+        # workflow_run on this workflow) would 500/503 on the very first
+        # request that exercises the new code path (see PR #119 follow-up:
+        # V009 was self-defeating -- UPDATE 'advisor' before DROP CONSTRAINT --
+        # and would have stayed broken indefinitely without this step).
+        if: success()
+        env:
+          FUNCTION_NAME: orion-identity-migrate-dev
+          REGION: us-east-1
+        run: |
+          set -euo pipefail
+          echo "===== Invoking ${FUNCTION_NAME} ====="
+          # SAM deploy's IdentityFunctionRole grants the lambda basic execution
+          # role, not invoke. The OIDC deploy role assumed in
+          # configure-aws-credentials above is granted lambda:InvokeFunction
+          # by orion-infrastructure modules/iam-sam-deploy-dev (see
+          # LambdaManageFunctions statement in that module), so this invoke
+          # works without an additional AWS::Lambda::Permission.
+          RESULT=$(aws lambda invoke \
+            --function-name "${FUNCTION_NAME}" \
+            --region "${REGION}" \
+            --payload '{}' \
+            --cli-binary-format raw-in-base64-out \
+            --output json \
+            /tmp/migrate-result.json)
+          echo "Lambda invoke result: ${RESULT}"
+          STATUS_CODE=$(echo "${RESULT}" | jq -r '.StatusCode // "unknown"')
+          if [ "${STATUS_CODE}" != "200" ]; then
+            echo "::error::Migrate Lambda returned StatusCode=${STATUS_CODE}"
+            cat /tmp/migrate-result.json
+            exit 1
+          fi
+          # FunctionError is populated when the handler throws.
+          FUNCTION_ERROR=$(echo "${RESULT}" | jq -r '.FunctionError // ""')
+          if [ -n "${FUNCTION_ERROR}" ]; then
+            echo "::error::Migrate Lambda threw: ${FUNCTION_ERROR}"
+            cat /tmp/migrate-result.json
+            exit 1
+          fi
+          cat /tmp/migrate-result.json
+          echo ""
+          echo "===== Migration summary ====="
+          jq -r '"applied=\(.applied|length) alreadyApplied=\(.alreadyApplied|length) missing=\(.missing|length)"' \
+            /tmp/migrate-result.json
+
       - name: Dump stack failure events (diagnostics)
         # On failure, --disable-rollback leaves the parent + nested stacks in
         # CREATE_FAILED with resources retained. Dump every CREATE_FAILED /

@@ -10,26 +10,26 @@
 --   asesor       -> advisor   (front-line advisor, top of the new hierarchy)
 --   admin        -> advisor   (admin loses implicit powers; advisor is the
 --                              only role with full CRUD on users)
---   distribuidor -> agent  (bottom-tier field role)
+--   distribuidor -> agent     (bottom-tier field role)
 --   supervisor   -> supervisor (unchanged)
 --
 -- Implementation notes:
---   - The original CHECK constraint was defined inline in V007 and is
---     auto-named by Postgres; the DO block below resolves it dynamically
---     to avoid relying on the generated name (`users_role_check`).
+--   - The old CHECK constraint from V007 MUST be dropped BEFORE the UPDATE,
+--     otherwise the new role values (`advisor`, `agent`) are rejected by
+--     V007's constraint that only allowed the old 4-value Spanish/mixed
+--     enum. The DO block below resolves the constraint dynamically to
+--     avoid relying on the auto-generated name.
 --   - Migration runs in a single transaction (singleTransaction=true in
---     .npmrc.migrate), so backfill + constraint swap are atomic.
+--     .npmrc.migrate), so DROP + backfill + ADD constraint are atomic.
 -- =============================================================================
 
 BEGIN;
 
--- Step 1: backfill existing rows to the new enum.
-UPDATE identity.users SET role = 'advisor'  WHERE role IN ('asesor', 'admin');
-UPDATE identity.users SET role = 'agent' WHERE role = 'distribuidor';
--- 'supervisor' is unchanged.
-
--- Step 2: drop the old CHECK constraint by introspecting pg_constraint so
+-- Step 1: drop the old CHECK constraint by introspecting pg_constraint so
 -- the migration is robust against the auto-generated constraint name.
+-- MUST happen BEFORE the UPDATE so the new role values (advisor, agent)
+-- are not rejected by V007's constraint that only allowed
+-- (asesor, supervisor, distribuidor, admin).
 DO $$
 DECLARE
   constraint_record RECORD;
@@ -45,6 +45,11 @@ BEGIN
     EXECUTE format('ALTER TABLE identity.users DROP CONSTRAINT %I', constraint_record.conname);
   END LOOP;
 END $$;
+
+-- Step 2: backfill existing rows to the new enum.
+UPDATE identity.users SET role = 'advisor'  WHERE role IN ('asesor', 'admin');
+UPDATE identity.users SET role = 'agent'    WHERE role = 'distribuidor';
+-- 'supervisor' is unchanged.
 
 -- Step 3: add the new CHECK constraint enforcing the 3-role English enum.
 ALTER TABLE identity.users
