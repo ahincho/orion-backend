@@ -11,7 +11,7 @@ export const UserRegisteredEventSchema = z.object({
   userId: z.string().uuid(),
   email: z.string().email(),
   fullName: z.string(),
-  role: z.enum(['advisor', 'supervisor', 'promotor']),
+  role: z.enum(['advisor', 'supervisor', 'agent']),
 });
 export type UserRegisteredEvent = z.infer<typeof UserRegisteredEventSchema>;
 

@@ -25,7 +25,7 @@ interface UserRow {
   email: string;
   full_name: string;
   password_hash: string;
-  role: 'advisor' | 'supervisor' | 'promotor';
+  role: 'advisor' | 'supervisor' | 'agent';
   active: boolean;
   created_at: Date;
   updated_at: Date;

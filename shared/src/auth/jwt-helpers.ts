@@ -26,7 +26,7 @@ export interface SignOptions {
   subject: string;
   /** User email. */
   email: string;
-  /** User role (e.g. 'advisor', 'supervisor', 'promotor'). */
+  /** User role (e.g. 'advisor', 'supervisor', 'agent'). */
   role: string;
   /** Token lifetime in seconds. Default: 3600 (1 hour). */
   expiresInSeconds?: number;
