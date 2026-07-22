@@ -86,6 +86,9 @@ jobs:
   migrate:
     name: "migrate (env=${{ inputs.environment }})"
     needs: gate
+    permissions:
+      contents: read
+      id-token: write
     uses: spark-match/spark-match-01-devops/.github/workflows/migrations.yml@main
     with:
       environment-name: ${{ inputs.environment }}
