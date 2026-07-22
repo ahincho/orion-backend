@@ -95,3 +95,23 @@ jobs:
       function-name: orion-identity-migrate-${{ inputs.environment }}
     secrets:
       AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+
+  # Sanity job: runs after migrate to confirm at least the reusable
+  # workflow call evaluated. If migrate fails silently (e.g. a
+  # cross-owner secret handshake issue), this job still shows up and
+  # surfaces the failure in the run summary.
+  done:
+    name: "done (env=${{ inputs.environment }})"
+    needs: migrate
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Migration run finished
+        run: |
+          set -euo pipefail
+          echo "Migration run finished with status=${{ needs.migrate.result }}"
+          echo "Reusable workflow exit gate is enforced by the preflight \`gate\` job above."
+          if [ "${{ needs.migrate.result }}" != "success" ]; then
+            echo "::error::migrate job result is '${{ needs.migrate.result }}' (expected success)"
+            exit 1
+          fi
