@@ -51,12 +51,15 @@ on:
         options:
           - dev
 
-concurrency:
-  # Same key as the cookbook migrations.yml reusable - prevents racing
-  # migrators against the same DB. See spark-match-01-devops
-  # .github/workflows/migrations.yml header for the rationale.
-  group: migrations-${{ inputs.environment }}
-  cancel-in-progress: false
+# Concurrency note: removed the workflow-level concurrency block. The
+# cookbook recipe declares its own concurrency group
+# (`migrations-${{ inputs.environment-name }}`, same key as the would-be
+# wrapper group) so the recipe handles serialization on its own. A
+# wrapper-level concurrency block that shares the same key as the
+# recipe causes GitHub Actions to silently drop the `uses:` job in
+# some evaluation paths (diagnosed by checking run 29963988221 - gate
+# ran and completed, but the migrate job never started and never
+# appeared in the jobs API).
 
 permissions:
   contents: read
