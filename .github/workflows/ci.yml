@@ -272,4 +272,4 @@ jobs:
     uses: spark-match/spark-match-01-devops/.github/workflows/migrations-dry-run.yml@main
     with:
       environment-name: ci
-      postgres-version: '16'
+      postgres-version: '17'
