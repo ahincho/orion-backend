@@ -12,7 +12,7 @@ function makeUser(overrides: Partial<User> = {}): User {
     email: 'alice@example.com',
     fullName: 'Alice',
     passwordHash: 'scrypt$16384$8$1$abc$def',
-    role: 'asesor',
+    role: 'advisor',
     active: true,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-01T00:00:00Z'),
@@ -65,7 +65,7 @@ describe('userService.register', () => {
       email: 'Alice@Example.com',
       fullName: 'Alice',
       password: 'password123',
-      role: 'asesor',
+      role: 'advisor',
     });
 
     expect(result.user.id).toBeTruthy();
@@ -89,7 +89,7 @@ describe('userService.register', () => {
         email: 'taken@example.com',
         fullName: 'X',
         password: 'password123',
-        role: 'asesor',
+        role: 'advisor',
       }),
     ).rejects.toMatchObject({
       statusCode: 409,

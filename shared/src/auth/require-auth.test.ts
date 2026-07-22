@@ -85,7 +85,7 @@ describe('requireAuth (fallback path)', () => {
     // Sign with a different secret so verification fails.
     const badToken = await signJwt(
       new TextEncoder().encode('different-secret-also-64-chars-long-aaaaaaaaaaaaaaaaaaaa'),
-      { subject: 'u-1', email: 'a@b.com', role: 'asesor' },
+      { subject: 'u-1', email: 'a@b.com', role: 'advisor' },
     );
     const event = { headers: { authorization: `Bearer ${badToken}` } };
     await expect(freshRequireAuth(event, SILENT_LOGGER)).rejects.toMatchObject({
@@ -103,13 +103,13 @@ describe('requireAuth (fallback path)', () => {
     const token = await signJwt(new TextEncoder().encode(SECRET_VALUE), {
       subject: 'u-1',
       email: 'a@b.com',
-      role: 'asesor',
+      role: 'advisor',
     });
     const event = { headers: { authorization: `Bearer ${token}` } };
     const auth = await freshRequireAuth(event, SILENT_LOGGER);
     expect(auth.userId).toBe('u-1');
     expect(auth.email).toBe('a@b.com');
-    expect(auth.role).toBe('asesor');
+    expect(auth.role).toBe('advisor');
   });
 
   it('throws unauthorized with synthetic detail when JWT lacks subject claim', async () => {
@@ -121,7 +121,7 @@ describe('requireAuth (fallback path)', () => {
       const actual = await vi.importActual<typeof JwtHelpers>('./jwt-helpers.js');
       return {
         ...actual,
-        verifyJwt: vi.fn().mockResolvedValue({ email: 'a@b.com', role: 'asesor' }),
+        verifyJwt: vi.fn().mockResolvedValue({ email: 'a@b.com', role: 'advisor' }),
       };
     });
     const { requireAuth: freshRequireAuth } = await import('./require-auth.js');

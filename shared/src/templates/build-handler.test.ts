@@ -118,13 +118,13 @@ describe('buildHandler', () => {
     });
 
     await (wrapped as unknown as (e: unknown) => Promise<{ statusCode: number }>)(
-      makeEvent({ name: 'Alice' }, { userId: 'u-1', email: 'a@b.com', role: 'asesor' }),
+      makeEvent({ name: 'Alice' }, { userId: 'u-1', email: 'a@b.com', role: 'advisor' }),
     );
 
     expect(handler).toHaveBeenCalledWith(
       { name: 'Alice' },
       expect.anything(),
-      expect.objectContaining({ userId: 'u-1', email: 'a@b.com', role: 'asesor' }),
+      expect.objectContaining({ userId: 'u-1', email: 'a@b.com', role: 'advisor' }),
     );
   });
 });
