@@ -1,0 +1,61 @@
+# =============================================================================
+# Migrations - manual operator trigger (orion-backend)
+# =============================================================================
+# This wrapper exposes a workflow_dispatch UI for ops to invoke the
+# orion-identity-migrate-<env> Lambda on demand (hotfix migrations, status
+# checks before prod approval, etc.) without going through a full SAM
+# deploy.
+#
+# The actual Lambda invoke logic is the `migrations.yml` reusable in
+# spark-match-01-devops (per docs/VERSIONING.md). This file is just a
+# thin shim that:
+#   1. Hard-codes the function-name pattern (orion-identity-migrate-<env>)
+#      so the operator does not have to type it.
+#   2. Presents a single-choice `environment` input that maps to a GH
+#      Environment gate (so the same approval flow as deploy applies).
+#   3. Forwards AWS_DEPLOY_ROLE_ARN from the chosen environment's secrets.
+#
+# Pin: @main. The cookbook recipe (spark-match-01-devops PR #91, promoted
+# to @main in PR #92) is now production-stable, so this wrapper pins to
+# @main per spark-match-01-devops/docs/VERSIONING.md.
+#
+# To add prod support:
+#   1. Add `prod` to the `environment` choice below.
+#   2. Create a GH Environment named `prod` in this repo with
+#      AWS_DEPLOY_ROLE_ARN (the prod migrate role).
+#   3. Provision `orion-identity-migrate-prod` Lambda in the prod stack.
+# =============================================================================
+
+name: Migrations - orion-backend
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment (GH Environment gate + function name suffix).'
+        type: choice
+        required: true
+        default: 'dev'
+        options:
+          - dev
+
+concurrency:
+  # Same key as the cookbook migrations.yml reusable - prevents racing
+  # migrators against the same DB. See spark-match-01-devops
+  # .github/workflows/migrations.yml header for the rationale.
+  group: migrations-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  migrate:
+    name: "migrate (env=${{ inputs.environment }})"
+    uses: spark-match/spark-match-01-devops/.github/workflows/migrations.yml@main
+    with:
+      environment-name: ${{ inputs.environment }}
+      function-name: orion-identity-migrate-${{ inputs.environment }}
+    secrets:
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}

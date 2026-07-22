@@ -32,6 +32,7 @@ on:
       - 'layers/**'
       - 'shared/**'
       - 'contexts/**'
+      - 'migrations/**'
 
 permissions:
   contents: read
