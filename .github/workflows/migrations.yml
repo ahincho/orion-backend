@@ -15,6 +15,15 @@
 #      Environment gate (so the same approval flow as deploy applies).
 #   3. Forwards AWS_DEPLOY_ROLE_ARN from the chosen environment's secrets.
 #
+# Environment gate (CRITICAL - see spark-match-01-devops PR #96):
+#   The reusable workflow declared `environment: <name>` on its job, but
+#   per GitHub Actions semantics, env declared in a reusable workflow is
+#   resolved in the CALLEE repo (spark-match-01-devops), which has no
+#   `dev` env, so the lookup silently failed and the run produced zero
+#   jobs. The fix is to declare `environment:` HERE at workflow level
+#   instead, so the lookup runs in the caller repo (this one) where the
+#   `dev` GH Environment actually exists.
+#
 # Pin: @main. The cookbook recipe (spark-match-01-devops PR #91, promoted
 # to @main in PR #92) is now production-stable, so this wrapper pins to
 # @main per spark-match-01-devops/docs/VERSIONING.md.
@@ -38,6 +47,13 @@ on:
         default: 'dev'
         options:
           - dev
+
+# Workflow-level `environment:` is required because jobs that call a
+# reusable workflow via `uses:` cannot declare `environment:` themselves
+# (it is not in the supported-key list at
+# https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations#supported-keywords-for-jobs-that-call-a-reusable-workflow).
+# Declaring it here propagates the gate to the calling job.
+environment: ${{ inputs.environment }}
 
 concurrency:
   # Same key as the cookbook migrations.yml reusable - prevents racing
