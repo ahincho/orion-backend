@@ -1,16 +1,16 @@
 -- =============================================================================
--- V009__restrict_user_role_to_advisor_supervisor_promotor.sql
+-- V009__restrict_user_role_to_advisor_supervisor_agent.sql
 -- =============================================================================
 -- Stage 2 of the user-management feature plan. Restricts the role column
 -- on identity.users to the new 3-tier English enum (`advisor`, `supervisor`,
--- `promotor`) and backfills existing rows so the migration is safe to run
+-- `agent`) and backfills existing rows so the migration is safe to run
 -- in environments that already have data.
 --
 -- Backfill mapping (from the old 4-role Spanish/mixed enum):
 --   asesor       -> advisor   (front-line advisor, top of the new hierarchy)
 --   admin        -> advisor   (admin loses implicit powers; advisor is the
 --                              only role with full CRUD on users)
---   distribuidor -> promotor  (bottom-tier field role)
+--   distribuidor -> agent  (bottom-tier field role)
 --   supervisor   -> supervisor (unchanged)
 --
 -- Implementation notes:
@@ -25,7 +25,7 @@ BEGIN;
 
 -- Step 1: backfill existing rows to the new enum.
 UPDATE identity.users SET role = 'advisor'  WHERE role IN ('asesor', 'admin');
-UPDATE identity.users SET role = 'promotor' WHERE role = 'distribuidor';
+UPDATE identity.users SET role = 'agent' WHERE role = 'distribuidor';
 -- 'supervisor' is unchanged.
 
 -- Step 2: drop the old CHECK constraint by introspecting pg_constraint so
@@ -49,12 +49,12 @@ END $$;
 -- Step 3: add the new CHECK constraint enforcing the 3-role English enum.
 ALTER TABLE identity.users
   ADD CONSTRAINT users_role_check
-  CHECK (role IN ('advisor', 'supervisor', 'promotor'));
+  CHECK (role IN ('advisor', 'supervisor', 'agent'));
 
 -- Step 4: refresh table/column comments to reflect the new role names.
 COMMENT ON TABLE identity.users
-  IS 'ORION identity context: user accounts (advisors, supervisors, promotors).';
+  IS 'ORION identity context: user accounts (advisors, supervisors, agents).';
 COMMENT ON COLUMN identity.users.role
-  IS 'Rol RBAC: advisor | supervisor | promotor.';
+  IS 'Rol RBAC: advisor | supervisor | agent.';
 
 COMMIT;

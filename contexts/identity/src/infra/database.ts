@@ -7,7 +7,7 @@
 
 import type { ColumnType, Generated } from 'kysely';
 
-export type UserRoleDb = 'advisor' | 'supervisor' | 'promotor';
+export type UserRoleDb = 'advisor' | 'supervisor' | 'agent';
 
 export interface UsersTable {
   id: Generated<string>;

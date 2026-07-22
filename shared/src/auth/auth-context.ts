@@ -11,7 +11,7 @@ export interface AuthContext {
   userId: string;
   /** Email from the JWT `email` claim (optional, may be empty). */
   email: string;
-  /** Role from the JWT `role` claim (e.g. 'advisor', 'supervisor', 'promotor'). */
+  /** Role from the JWT `role` claim (e.g. 'advisor', 'supervisor', 'agent'). */
   role: string;
   /** Raw JWT claims for advanced use cases (rarely needed). */
   rawClaims: Record<string, unknown>;
