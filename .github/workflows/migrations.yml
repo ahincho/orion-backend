@@ -20,13 +20,21 @@
 #   per GitHub Actions semantics, env declared in a reusable workflow is
 #   resolved in the CALLEE repo (spark-match-01-devops), which has no
 #   `dev` env, so the lookup silently failed and the run produced zero
-#   jobs. The fix is to declare `environment:` HERE at workflow level
-#   instead, so the lookup runs in the caller repo (this one) where the
-#   `dev` GH Environment actually exists.
+#   jobs (see orion-backend run IDs 29942603911, 29955830573). The cookbook
+#   recipe removed the gate in PR #96, so this wrapper now enforces it
+#   itself.
 #
-# Pin: @main. The cookbook recipe (spark-match-01-devops PR #91, promoted
-# to @main in PR #92) is now production-stable, so this wrapper pins to
-# @main per spark-match-01-devops/docs/VERSIONING.md.
+#   Why a separate `gate` job instead of `environment:` on the `migrate`
+#   job: `environment:` is NOT in the supported-key list for jobs that
+#   call a reusable workflow via `uses:` (see
+#   https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations#supported-keywords-for-jobs-that-call-a-reusable-workflow).
+#   A regular preflight job in the caller repo is the cleanest place for
+#   the gate: any GH Environment protection rules (required reviewers,
+#   wait timer, branch restrictions) are evaluated there.
+#
+# Pin: @main. The cookbook recipe is now stable on main (PR #97 promoted
+# PR #96's fix), so this wrapper pins to @main per spark-match-01-devops/
+# docs/VERSIONING.md.
 #
 # To add prod support:
 #   1. Add `prod` to the `environment` choice below.
@@ -48,13 +56,6 @@ on:
         options:
           - dev
 
-# Workflow-level `environment:` is required because jobs that call a
-# reusable workflow via `uses:` cannot declare `environment:` themselves
-# (it is not in the supported-key list at
-# https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations#supported-keywords-for-jobs-that-call-a-reusable-workflow).
-# Declaring it here propagates the gate to the calling job.
-environment: ${{ inputs.environment }}
-
 concurrency:
   # Same key as the cookbook migrations.yml reusable - prevents racing
   # migrators against the same DB. See spark-match-01-devops
@@ -67,8 +68,24 @@ permissions:
   id-token: write
 
 jobs:
+  # Preflight gate that enforces the GH Environment approval flow in the
+  # caller repo (this one). Runs as a no-op echo step; the gate value is
+  # that the job must clear the `environment: <name>` approval rules before
+  # it can start.
+  gate:
+    name: "gate (env=${{ inputs.environment }})"
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Environment gate cleared
+        run: |
+          set -euo pipefail
+          echo "Environment '${{ inputs.environment }}' gate approved."
+          echo "Proceeding to invoke the migrator Lambda via the cookbook recipe."
+
   migrate:
     name: "migrate (env=${{ inputs.environment }})"
+    needs: gate
     uses: spark-match/spark-match-01-devops/.github/workflows/migrations.yml@main
     with:
       environment-name: ${{ inputs.environment }}
