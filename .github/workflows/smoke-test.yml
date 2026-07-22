@@ -10,9 +10,9 @@
 # Validates the full happy path against the deployed API:
 #   1. POST /v1/auth/register (expect 200 or 201)
 #   2. POST /v1/auth/login (expect 200 + JWT)
-#   3. GET /v1/users/me with Bearer (expect 200 + user data)
-#   4. GET /v1/users/me without Bearer (expect 401)
-#   5. GET /v1/users/me with malformed Bearer (expect 401 or 403)
+#   3. GET /v1/auth/me with Bearer (expect 200 + user data)
+#   4. GET /v1/auth/me without Bearer (expect 401)
+#   5. GET /v1/auth/me with malformed Bearer (expect 401 or 403)
 #
 # Guards against:
 #   - Authorizer Lambda silently breaking (login would still 200, /me would 500/401).
@@ -144,10 +144,10 @@ jobs:
           echo "Token (first 30 chars): ${TOKEN:0:30}..."
 
           echo ""
-          echo "=== 3. GET /v1/users/me with Bearer (expect 200) ==="
+          echo "=== 3. GET /v1/auth/me with Bearer (expect 200) ==="
           ME_HTTP=$(curl -sS -o /tmp/me.json -w "%{http_code}" \
             -H "Authorization: Bearer ${TOKEN}" \
-            "${API_URL}/v1/users/me")
+            "${API_URL}/v1/auth/me")
           echo "Status: $ME_HTTP"
           cat /tmp/me.json
           echo ""
@@ -157,9 +157,9 @@ jobs:
           fi
 
           echo ""
-          echo "=== 4. GET /v1/users/me WITHOUT Bearer (expect 401) ==="
+          echo "=== 4. GET /v1/auth/me WITHOUT Bearer (expect 401) ==="
           NO_AUTH_HTTP=$(curl -sS -o /tmp/no-auth.json -w "%{http_code}" \
-            "${API_URL}/v1/users/me")
+            "${API_URL}/v1/auth/me")
           echo "Status: $NO_AUTH_HTTP"
           if [ "$NO_AUTH_HTTP" != "401" ]; then
             echo "::error::GET /me without token expected 401, got $NO_AUTH_HTTP"
@@ -167,10 +167,10 @@ jobs:
           fi
 
           echo ""
-          echo "=== 5. GET /v1/users/me with malformed Bearer (expect 401 or 403) ==="
+          echo "=== 5. GET /v1/auth/me with malformed Bearer (expect 401 or 403) ==="
           BAD_AUTH_HTTP=$(curl -sS -o /tmp/bad-auth.json -w "%{http_code}" \
             -H "Authorization: Bearer not-a-jwt" \
-            "${API_URL}/v1/users/me")
+            "${API_URL}/v1/auth/me")
           echo "Status: $BAD_AUTH_HTTP"
           if [ "$BAD_AUTH_HTTP" != "401" ] && [ "$BAD_AUTH_HTTP" != "403" ]; then
             echo "::error::GET /me with bad token expected 401 or 403, got $BAD_AUTH_HTTP"

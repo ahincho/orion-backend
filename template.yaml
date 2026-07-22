@@ -218,7 +218,7 @@ Resources:
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref HttpApi
-      RouteKey: GET /v1/users/me
+      RouteKey: GET /v1/auth/me
       Target: !Sub "integrations/${IdentityGetMeIntegration.IntegrationId}"
       AuthorizerId: !Ref ApiGatewayAuthorizer
       AuthorizationType: CUSTOM
@@ -235,8 +235,101 @@ Resources:
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref HttpApi
-      RouteKey: POST /v1/users/me/password
+      RouteKey: POST /v1/auth/change-password
       Target: !Sub "integrations/${IdentityChangePasswordIntegration.IntegrationId}"
+      AuthorizerId: !Ref ApiGatewayAuthorizer
+      AuthorizationType: CUSTOM
+
+  # ---------------------------------------------------------------------------
+  # Administrative user-management endpoints (Stage 3 of the user-management
+  # feature plan). All routes require a CUSTOM authorizer (JWT validation);
+  # role-based authorization is enforced inside each Lambda via
+  # userService.* (advisor > supervisor > agent). Path-param {userId} is
+  # validated by the Zod schema in contexts/identity/src/schemas/.
+  # ---------------------------------------------------------------------------
+
+  IdentityListUsersIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt IdentityStack.Outputs.IdentityListUsersFunctionArn
+      PayloadFormatVersion: '2.0'
+
+  IdentityListUsersRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: GET /v1/users
+      Target: !Sub "integrations/${IdentityListUsersIntegration.IntegrationId}"
+      AuthorizerId: !Ref ApiGatewayAuthorizer
+      AuthorizationType: CUSTOM
+
+  IdentityGetUserIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt IdentityStack.Outputs.IdentityGetUserFunctionArn
+      PayloadFormatVersion: '2.0'
+
+  IdentityGetUserRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: GET /v1/users/{userId}
+      Target: !Sub "integrations/${IdentityGetUserIntegration.IntegrationId}"
+      AuthorizerId: !Ref ApiGatewayAuthorizer
+      AuthorizationType: CUSTOM
+
+  IdentityUpdateUserIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt IdentityStack.Outputs.IdentityUpdateUserFunctionArn
+      PayloadFormatVersion: '2.0'
+
+  IdentityUpdateUserRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: PATCH /v1/users/{userId}
+      Target: !Sub "integrations/${IdentityUpdateUserIntegration.IntegrationId}"
+      AuthorizerId: !Ref ApiGatewayAuthorizer
+      AuthorizationType: CUSTOM
+
+  IdentityDeactivateUserIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt IdentityStack.Outputs.IdentityDeactivateUserFunctionArn
+      PayloadFormatVersion: '2.0'
+
+  IdentityDeactivateUserRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: POST /v1/users/{userId}/deactivate
+      Target: !Sub "integrations/${IdentityDeactivateUserIntegration.IntegrationId}"
+      AuthorizerId: !Ref ApiGatewayAuthorizer
+      AuthorizationType: CUSTOM
+
+  IdentityActivateUserIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt IdentityStack.Outputs.IdentityActivateUserFunctionArn
+      PayloadFormatVersion: '2.0'
+
+  IdentityActivateUserRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: POST /v1/users/{userId}/activate
+      Target: !Sub "integrations/${IdentityActivateUserIntegration.IntegrationId}"
       AuthorizerId: !Ref ApiGatewayAuthorizer
       AuthorizationType: CUSTOM
 
@@ -323,6 +416,46 @@ Resources:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !GetAtt IdentityStack.Outputs.IdentityChangePasswordFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
+
+  IdentityListUsersPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt IdentityStack.Outputs.IdentityListUsersFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
+
+  IdentityGetUserPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt IdentityStack.Outputs.IdentityGetUserFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
+
+  IdentityUpdateUserPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt IdentityStack.Outputs.IdentityUpdateUserFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
+
+  IdentityDeactivateUserPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt IdentityStack.Outputs.IdentityDeactivateUserFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"
+
+  IdentityActivateUserPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt IdentityStack.Outputs.IdentityActivateUserFunctionArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*"

@@ -153,6 +153,83 @@ Resources:
             - !Ref LambdaSecurityGroupId
         - !Ref AWS::NoValue
 
+  # ---------------------------------------------------------------------------
+  # Administrative user-management endpoints (Stage 3 of the user-management
+  # feature plan). All 5 lambdas share the same role + VPC config as the
+  # existing Identity* functions; only the handler file differs. Wiring
+  # (Integrations + Routes + Permissions) lives in the root template.yaml.
+  # ---------------------------------------------------------------------------
+
+  IdentityListUsersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'orion-identity-list-users-${Environment}'
+      Handler: handlers/list-users.handler
+      CodeUri: ./dist
+      Role: !GetAtt IdentityFunctionRole.Arn
+      VpcConfig: !If
+        - AttachToVpc
+        - SubnetIds: !Split [",", !Ref VpcSubnetIds]
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
+
+  IdentityGetUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'orion-identity-get-user-${Environment}'
+      Handler: handlers/get-user.handler
+      CodeUri: ./dist
+      Role: !GetAtt IdentityFunctionRole.Arn
+      VpcConfig: !If
+        - AttachToVpc
+        - SubnetIds: !Split [",", !Ref VpcSubnetIds]
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
+
+  IdentityUpdateUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'orion-identity-update-user-${Environment}'
+      Handler: handlers/update-user.handler
+      CodeUri: ./dist
+      Role: !GetAtt IdentityFunctionRole.Arn
+      VpcConfig: !If
+        - AttachToVpc
+        - SubnetIds: !Split [",", !Ref VpcSubnetIds]
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
+
+  IdentityDeactivateUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'orion-identity-deactivate-user-${Environment}'
+      Handler: handlers/deactivate-user.handler
+      CodeUri: ./dist
+      Role: !GetAtt IdentityFunctionRole.Arn
+      VpcConfig: !If
+        - AttachToVpc
+        - SubnetIds: !Split [",", !Ref VpcSubnetIds]
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
+
+  IdentityActivateUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'orion-identity-activate-user-${Environment}'
+      Handler: handlers/activate-user.handler
+      CodeUri: ./dist
+      Role: !GetAtt IdentityFunctionRole.Arn
+      VpcConfig: !If
+        - AttachToVpc
+        - SubnetIds: !Split [",", !Ref VpcSubnetIds]
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
+
   # One-shot migration runner (TEMPORAL). Applies any *.sql file under
   # dist/migrations against the configured RDS using the same Pool the
   # service handlers use. Will be removed once the project has a proper
@@ -228,3 +305,23 @@ Outputs:
     Value: !GetAtt IdentitySmokeTestCleanupFunction.Arn
     Export:
       Name: !Sub 'orion-identity-smoke-test-cleanup-arn-${Environment}'
+  IdentityListUsersFunctionArn:
+    Value: !GetAtt IdentityListUsersFunction.Arn
+    Export:
+      Name: !Sub 'orion-identity-list-users-arn-${Environment}'
+  IdentityGetUserFunctionArn:
+    Value: !GetAtt IdentityGetUserFunction.Arn
+    Export:
+      Name: !Sub 'orion-identity-get-user-arn-${Environment}'
+  IdentityUpdateUserFunctionArn:
+    Value: !GetAtt IdentityUpdateUserFunction.Arn
+    Export:
+      Name: !Sub 'orion-identity-update-user-arn-${Environment}'
+  IdentityDeactivateUserFunctionArn:
+    Value: !GetAtt IdentityDeactivateUserFunction.Arn
+    Export:
+      Name: !Sub 'orion-identity-deactivate-user-arn-${Environment}'
+  IdentityActivateUserFunctionArn:
+    Value: !GetAtt IdentityActivateUserFunction.Arn
+    Export:
+      Name: !Sub 'orion-identity-activate-user-arn-${Environment}'
