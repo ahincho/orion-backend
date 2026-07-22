@@ -35,6 +35,9 @@ export interface PublicUser {
 
 export type UserRole = 'advisor' | 'supervisor' | 'agent';
 
+/** Runtime tuple for z.enum() and iteration. Source of truth for the role enum. */
+export const USER_ROLES = ['advisor', 'supervisor', 'agent'] as const;
+
 export interface CreateUserInput {
   email: string;
   fullName: string;

@@ -10,7 +10,7 @@
 import type { Kysely } from 'kysely';
 import { withDbErrorMapping } from '@orion/shared/infra';
 import type { Database } from './database.js';
-import { type CreateUserInput, type User } from '../domain/user.js';
+import { type CreateUserInput, type User, type UserRole } from '../domain/user.js';
 
 export interface UserRepository {
   findByEmail(email: string): Promise<User | null>;
@@ -18,6 +18,27 @@ export interface UserRepository {
   create(input: CreateUserInput & { id: string; passwordHash: string }): Promise<User>;
   updatePassword(id: string, newPasswordHash: string): Promise<void>;
   existsByEmail(email: string): Promise<boolean>;
+  list(input: ListUsersFilter): Promise<{ items: User[]; total: number }>;
+  update(id: string, input: UpdateUserFields): Promise<User>;
+  setActive(id: string, active: boolean): Promise<User>;
+}
+
+export interface ListUsersFilter {
+  /** Restrict results to users whose role is in this set. Omit = no role filter. */
+  roles?: readonly UserRole[];
+  /** Restrict to active=true|false. Omit = no active filter. */
+  active?: boolean;
+  /** 1-indexed page number. */
+  page: number;
+  /** Items per page (server-clamped). */
+  perPage: number;
+}
+
+export interface UpdateUserFields {
+  email?: string;
+  fullName?: string;
+  role?: UserRole;
+  active?: boolean;
 }
 
 interface UserRow {
@@ -104,6 +125,66 @@ export function createUserRepository(db: Kysely<Database>): UserRepository {
           .where('email', '=', email.toLowerCase())
           .executeTakeFirst();
         return row !== undefined;
+      });
+    },
+
+    async list(input: ListUsersFilter) {
+      return withDbErrorMapping('users.list', async () => {
+        const offset = (input.page - 1) * input.perPage;
+
+        // Build a shared expression tree for WHERE so list + count stay in sync.
+        let base = db.selectFrom('users').selectAll();
+        if (input.roles && input.roles.length > 0) {
+          base = base.where('role', 'in', [...input.roles]);
+        }
+        if (input.active !== undefined) {
+          base = base.where('active', '=', input.active);
+        }
+
+        const [rows, totalRow] = await Promise.all([
+          base
+            .orderBy('created_at', 'desc')
+            .limit(input.perPage)
+            .offset(offset)
+            .execute(),
+          base
+            .clearSelect()
+            .select((eb) => eb.fn.countAll<number>().as('total'))
+            .executeTakeFirst(),
+        ]);
+
+        const total = Number(totalRow?.total ?? 0);
+        return { items: rows.map(mapRowToUser), total };
+      });
+    },
+
+    async update(id: string, input: UpdateUserFields) {
+      return withDbErrorMapping('users.update', async () => {
+        const patch: Record<string, unknown> = { updated_at: new Date() };
+        if (input.email !== undefined) patch['email'] = input.email.toLowerCase();
+        if (input.fullName !== undefined) patch['full_name'] = input.fullName;
+        if (input.role !== undefined) patch['role'] = input.role;
+        if (input.active !== undefined) patch['active'] = input.active;
+
+        const row = await db
+          .updateTable('users')
+          .set(patch)
+          .where('id', '=', id)
+          .returningAll()
+          .executeTakeFirstOrThrow();
+        return mapRowToUser(row);
+      });
+    },
+
+    async setActive(id: string, active: boolean) {
+      return withDbErrorMapping('users.setActive', async () => {
+        const row = await db
+          .updateTable('users')
+          .set({ active, updated_at: new Date() })
+          .where('id', '=', id)
+          .returningAll()
+          .executeTakeFirstOrThrow();
+        return mapRowToUser(row);
       });
     },
   };
