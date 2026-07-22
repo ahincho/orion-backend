@@ -71,8 +71,32 @@ gh api user --jq .login
 
 - Routing/nombres/identificadores en **English**; copy de UI en **Spanish**
   (solo aplica a orion-frontend).
+  - **Excepcion documentada**: el identificador de rol `promotor` se mantiene
+    en espanol (es el unico role identifier que no sigue la convencion
+    English). Razon: el equipo de producto lo prefiere asi para alinear
+    con la terminologia usada por las cuadrillas en campo. Todos los
+    demas identificadores (incluidos los demas roles, `asesor` → `advisor`,
+    `distribuidor` → `promotor`, `admin` → `advisor`) son English.
 - Commits: Conventional Commits + scope (`feat(auth): ...`).
 - Tags: `git tag -a vX.Y.Z -m "release vX.Y.Z"` (semver).
+
+## RBAC (3-tier)
+
+El role de un usuario pertenece a exactamente uno de tres valores
+(canonica y database-enforced via `CHECK` en `identity.users.role`):
+
+| Nivel  | Identifier | Scope                                                                       |
+| ------ | ---------- | --------------------------------------------------------------------------- |
+| alto   | `advisor`  | CRUD completo sobre todos los usuarios (`/v1/users/*`)                      |
+| medio  | `supervisor` | CRUD solo sobre usuarios `promotor`                                       |
+| bajo   | `promotor` | sin acceso a endpoints administrativos                                      |
+
+Reglas universales (aplican a todos los roles, incluido self):
+- no se permite auto-deactivacion
+- no se permite auto-cambio de rol
+- solo se permite auto-cambio de password (`/v1/auth/change-password`)
+
+Detalles en ADR 0010 (pendiente en Stage 3) y en `migrations/V009__restrict_user_role_to_advisor_supervisor_promotor.sql`.
 
 ## Estructura por bounded context
 

@@ -22,11 +22,11 @@ export const handler = buildHandler<AssignHomeInput, Assignment>({
   enableCors: true,
   handler: async (input, _event, auth: AuthContext | undefined) => {
     if (!auth) throw new Error('requireAuth=true but auth is undefined (bug)');
-    if (auth.role !== 'supervisor' && auth.role !== 'admin') {
-      throw ApiError.forbidden('Only supervisors or admins can assign homes', {
+    if (auth.role !== 'supervisor') {
+      throw ApiError.forbidden('Only supervisors can assign homes', {
         code: 'auth.role_required',
-        message: 'Only supervisors or admins can assign homes',
-        meta: { requiredRoles: ['supervisor', 'admin'], currentRole: auth.role },
+        message: 'Only supervisors can assign homes',
+        meta: { requiredRoles: ['supervisor'], currentRole: auth.role },
       });
     }
     const { censusService } = await buildContext();

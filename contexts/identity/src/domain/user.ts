@@ -33,7 +33,7 @@ export interface PublicUser {
   updatedAt: string;
 }
 
-export type UserRole = 'asesor' | 'supervisor' | 'distribuidor' | 'admin';
+export type UserRole = 'advisor' | 'supervisor' | 'promotor';
 
 export interface CreateUserInput {
   email: string;

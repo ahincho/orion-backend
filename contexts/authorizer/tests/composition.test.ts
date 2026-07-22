@@ -124,7 +124,7 @@ describe('composition AuthorizerContext.verify', () => {
     const wrongToken = await signJwt(new TextEncoder().encode('b'.repeat(64)), {
       subject: 'u-other',
       email: 'o@p.com',
-      role: 'asesor',
+      role: 'advisor',
     });
     const { buildContext: bc } = await freshComposition();
     const ctx = await bc();
@@ -169,7 +169,7 @@ describe('composition AuthorizerContext.verify', () => {
     const token = await signJwt(SECRET_BYTES, {
       subject: 'u-1',
       email: 'a@b.com',
-      role: 'asesor',
+      role: 'advisor',
     });
     const { buildContext: bc } = await freshComposition();
     const ctx = await bc();

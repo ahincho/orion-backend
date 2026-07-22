@@ -9,7 +9,7 @@ describe('signJwt', () => {
     const token = await signJwt(SECRET, {
       subject: 'u-123',
       email: 'a@b.com',
-      role: 'asesor',
+      role: 'advisor',
     });
     expect(token).toMatch(/^[\w-]+\.[\w-]+\.[\w-]+$/);
   });

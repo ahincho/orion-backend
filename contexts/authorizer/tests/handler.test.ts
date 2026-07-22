@@ -51,11 +51,11 @@ describe('authorizer.handler', () => {
   });
 
   it('returns isAuthorized:true with context on a valid Bearer token', async () => {
-    verify.mockResolvedValue({ userId: 'u-1', email: 'a@b.com', role: 'asesor' });
+    verify.mockResolvedValue({ userId: 'u-1', email: 'a@b.com', role: 'advisor' });
     const result = await handler(makeEvent('Bearer abc.def.ghi'));
     expect(result).toEqual({
       isAuthorized: true,
-      context: { userId: 'u-1', email: 'a@b.com', role: 'asesor' },
+      context: { userId: 'u-1', email: 'a@b.com', role: 'advisor' },
     });
     expect(verify).toHaveBeenCalledWith('abc.def.ghi');
   });
@@ -90,7 +90,7 @@ describe('authorizer.handler', () => {
   });
 
   it('treats header as case-insensitive (UPPERCASE key fallback path)', async () => {
-    verify.mockResolvedValue({ userId: 'u-3', email: 'k@l.com', role: 'admin' });
+    verify.mockResolvedValue({ userId: 'u-3', email: 'k@l.com', role: 'advisor' });
     const event = makeEvent('Bearer tok') as unknown as APIGatewayRequestAuthorizerEventV2;
     delete (event.headers as Record<string, string>).authorization;
     (event.headers as Record<string, string>).AUTHORIZATION = 'Bearer tok';
@@ -106,7 +106,7 @@ describe('authorizer.handler', () => {
   });
 
   it('forwards token only (strips the "Bearer " prefix)', async () => {
-    verify.mockResolvedValue({ userId: 'u-4', email: 'q@w.com', role: 'asesor' });
+    verify.mockResolvedValue({ userId: 'u-4', email: 'q@w.com', role: 'advisor' });
     await handler(makeEvent('Bearer some.jwt.value'));
     expect(verify).toHaveBeenCalledWith('some.jwt.value');
     expect(verify).not.toHaveBeenCalledWith('Bearer some.jwt.value');
