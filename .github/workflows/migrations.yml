@@ -83,9 +83,10 @@ jobs:
           echo "Environment '${{ inputs.environment }}' gate approved."
           echo "Proceeding to invoke the migrator Lambda via the cookbook recipe."
 
+  # Invoke the cookbook's migrations.yml reusable to actually run the
+  # migrator Lambda. NO `needs: gate` on this job (see comment below).
   migrate:
     name: "migrate (env=${{ inputs.environment }})"
-    needs: gate
     permissions:
       contents: read
       id-token: write
@@ -96,21 +97,23 @@ jobs:
     secrets:
       AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
 
-  # Sanity job: runs after migrate to confirm at least the reusable
-  # workflow call evaluated. If migrate fails silently (e.g. a
-  # cross-owner secret handshake issue), this job still shows up and
-  # surfaces the failure in the run summary.
+  # Sanity job: depends on migrate (via needs:) to confirm the reusable
+  # workflow call evaluated. If migrate fails silently and does not appear
+  # in the jobs API, this job still shows up with needs.migrate.result = 'failure'
+  # and surfaces the failure in the run summary. Diagnostic only - it does
+  # NOT enforce sequencing (the gate job already does that via environment:
+  # approval rules; the migrate job calls the Lambda right after gate passes).
   done:
     name: "done (env=${{ inputs.environment }})"
-    needs: migrate
+    needs: [gate, migrate]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Migration run finished
         run: |
           set -euo pipefail
-          echo "Migration run finished with status=${{ needs.migrate.result }}"
-          echo "Reusable workflow exit gate is enforced by the preflight \`gate\` job above."
+          echo "gate.result    = ${{ needs.gate.result }}"
+          echo "migrate.result = ${{ needs.migrate.result }}"
           if [ "${{ needs.migrate.result }}" != "success" ]; then
             echo "::error::migrate job result is '${{ needs.migrate.result }}' (expected success)"
             exit 1
