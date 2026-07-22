@@ -63,16 +63,11 @@ permissions:
   id-token: write
 
 jobs:
-  # Single job that does BOTH the env approval gate AND the migrator
-  # invocation. The `environment:` keyword enforces the GH Environment
-  # approval flow in the caller repo (where the env exists), AND it
-  # scopes the AWS_DEPLOY_ROLE_ARN lookup to the env-scoped secret.
-  # Putting both concerns in one job avoids the `needs:` + `uses:`
-  # interaction that was making the migrate job silently fail with
-  # "Required property is missing: runs-on" (per `gh workflow run`
-  # API error: `environment:` is not supported on `uses:` jobs).
-  migrate:
-    name: "migrate (env=${{ inputs.environment }})"
+  # Preflight gate: enforces the GH Environment approval flow. The job
+  # itself does nothing useful; its value is that it must clear the
+  # `environment: <name>` approval rules before it can start.
+  gate:
+    name: "gate (env=${{ inputs.environment }})"
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     steps:
@@ -80,12 +75,22 @@ jobs:
         run: |
           set -euo pipefail
           echo "Environment '${{ inputs.environment }}' gate approved (GH Environment approval rules honored)."
-          echo "Forwarding to cookbook recipe to invoke the migrator Lambda..."
+          echo "Cookbook recipe will now invoke the migrator Lambda."
 
-      - name: Invoke migrator Lambda via cookbook recipe
-        uses: spark-match/spark-match-01-devops/.github/workflows/migrations.yml@main
-        with:
-          environment-name: ${{ inputs.environment }}
-          function-name: orion-identity-migrate-${{ inputs.environment }}
-        secrets:
-          AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+  # The actual migration invocation via the cookbook reusable. NO
+  # `needs: gate` (the gate is enforced by GitHub Environment approval
+  # rules on the gate job, not by job-level dependencies). NO
+  # `environment:` on this job (the keyword is rejected by GitHub
+  # Actions on uses: jobs - confirmed by the API error
+  # "failed to parse workflow: Required property is missing: runs-on").
+  # Reads AWS_DEPLOY_ROLE_ARN from repo-level scope (set via
+  # `gh secret set AWS_DEPLOY_ROLE_ARN`, see orion-infrastructure
+  # Terraform or this PR's setup notes).
+  migrate:
+    name: "migrate (env=${{ inputs.environment }})"
+    uses: spark-match/spark-match-01-devops/.github/workflows/migrations.yml@main
+    with:
+      environment-name: ${{ inputs.environment }}
+      function-name: orion-identity-migrate-${{ inputs.environment }}
+    secrets:
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
