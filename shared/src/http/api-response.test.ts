@@ -13,29 +13,51 @@ describe('formatResponse', () => {
 });
 
 describe('formatError', () => {
-  it('formats ApiError with code and details', () => {
-    const err = ApiError.badRequest('Invalid email', { field: 'email' });
+  it('formats ApiError with code and structured details', () => {
+    const err = ApiError.badRequest('Invalid email', {
+      code: 'validation.invalid_type',
+      message: 'Expected string',
+      path: 'email',
+    });
     const result = formatError(err, 'req-456');
     expect(result.success).toBe(false);
     expect(result.error.code).toBe('bad_request');
     expect(result.error.message).toBe('Invalid email');
-    expect(result.error.details).toEqual({ field: 'email' });
+    expect(result.error.details).toEqual([
+      { code: 'validation.invalid_type', message: 'Expected string', path: 'email' },
+    ]);
     expect(result.meta.requestId).toBe('req-456');
   });
 
-  it('hides internal error details from unknown errors', () => {
+  it('always includes details field even when ApiError has no explicit details (synthetic fallback)', () => {
+    const err = ApiError.unauthorized();
+    const result = formatError(err, 'req-abc');
+    expect(result.error.code).toBe('unauthorized');
+    expect(result.error.details).toEqual([{ code: 'unauthorized', message: 'Unauthorized' }]);
+  });
+
+  it('hides internal error details from unknown errors and surfaces internal.unknown code', () => {
     const err = new Error('DB password leaked here');
     const result = formatError(err, 'req-789');
     expect(result.success).toBe(false);
     expect(result.error.code).toBe('internal');
     expect(result.error.message).toBe('Internal server error');
-    expect(result.error.details).toBeUndefined();
+    expect(result.error.details).toEqual([
+      { code: 'internal.unknown', message: 'Internal server error' },
+    ]);
   });
 
-  it('omits details field when ApiError has no details', () => {
-    const err = ApiError.unauthorized();
-    const result = formatError(err, 'req-abc');
-    expect(result.error.code).toBe('unauthorized');
-    expect(result.error).not.toHaveProperty('details');
+  it('serializes to a stable shape regardless of synthetic vs explicit details', () => {
+    const withDetails = formatError(
+      ApiEmailTaken(),
+      'req-1',
+    );
+    const withoutDetails = formatError(ApiError.unauthorized(), 'req-2');
+    expect(Object.keys(withDetails.error).sort()).toEqual(['code', 'details', 'message']);
+    expect(Object.keys(withoutDetails.error).sort()).toEqual(['code', 'details', 'message']);
   });
 });
+
+function ApiEmailTaken(): ApiError {
+  return ApiError.emailTaken('a@b.com');
+}

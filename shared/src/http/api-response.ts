@@ -3,13 +3,16 @@
 // =============================================================================
 // Standard JSON envelope for all ORION API responses:
 //   { success: true,  data: <payload>, meta: { requestId, timestamp } }
-//   { success: false, error: { code, message, details? }, meta: {...} }
+//   { success: false, error: { code, message, details[] }, meta: {...} }
 //
-// The httpErrorHandler middleware in build-handler calls formatError(err)
-// when an error is thrown. formatResponse is called on success.
+// `error.details` is ALWAYS a non-empty ErrorDetail[] (synthetic when the
+// originating error has no granular detail). The httpErrorHandler middleware
+// in build-handler calls formatError(err) when an error is thrown;
+// formatResponse is called on success.
 // =============================================================================
 
 import { ApiError } from './api-error.js';
+import type { ErrorDetail } from './error-detail.js';
 
 export interface ResponseMeta {
   requestId: string;
@@ -27,7 +30,8 @@ export interface ErrorEnvelope {
   error: {
     code: string;
     message: string;
-    details?: Record<string, unknown>;
+    /** Always present and non-empty. */
+    details: ErrorDetail[];
   };
   meta: ResponseMeta;
 }
@@ -44,31 +48,29 @@ export function formatResponse<T>(data: T, requestId: string): SuccessEnvelope<T
 }
 
 export function formatError(err: unknown, requestId: string): ErrorEnvelope {
+  const meta: ResponseMeta = {
+    requestId,
+    timestamp: new Date().toISOString(),
+  };
   if (err instanceof ApiError) {
     return {
       success: false,
       error: {
         code: err.code,
         message: err.message,
-        ...(err.details ? { details: err.details } : {}),
+        details: err.details,
       },
-      meta: {
-        requestId,
-        timestamp: new Date().toISOString(),
-      },
+      meta,
     };
   }
-
   // Unknown error: do not leak internal details to the client.
   return {
     success: false,
     error: {
       code: 'internal',
       message: 'Internal server error',
+      details: [{ code: 'internal.unknown', message: 'Internal server error' }],
     },
-    meta: {
-      requestId,
-      timestamp: new Date().toISOString(),
-    },
+    meta,
   };
 }

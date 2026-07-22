@@ -1,8 +1,13 @@
 // =============================================================================
 // Home repository
 // =============================================================================
+// All kysely calls are wrapped with withDbErrorMapping so any driver-level
+// failure surfaces as ApiError.dbUnavailable (code: db.unavailable,
+// meta.operation).
+// =============================================================================
 
 import type { Kysely } from 'kysely';
+import { withDbErrorMapping } from '@orion/shared/infra';
 import type { Database } from './database.js';
 import { type Home, type CountryCode } from '../domain/home.js';
 
@@ -65,66 +70,82 @@ function mapRowToHome(row: HomeRow): Home {
 export function createHomeRepository(db: Kysely<Database>): HomeRepository {
   return {
     async findById(id) {
-      const row = await db.selectFrom('homes').selectAll().where('id', '=', id).executeTakeFirst();
-      return row ? mapRowToHome(row) : null;
+      return withDbErrorMapping('homes.findById', async () => {
+        const row = await db
+          .selectFrom('homes')
+          .selectAll()
+          .where('id', '=', id)
+          .executeTakeFirst();
+        return row ? mapRowToHome(row) : null;
+      });
     },
 
     async findByExternalId(externalId) {
-      const row = await db
-        .selectFrom('homes')
-        .selectAll()
-        .where('external_id', '=', externalId)
-        .executeTakeFirst();
-      return row ? mapRowToHome(row) : null;
+      return withDbErrorMapping('homes.findByExternalId', async () => {
+        const row = await db
+          .selectFrom('homes')
+          .selectAll()
+          .where('external_id', '=', externalId)
+          .executeTakeFirst();
+        return row ? mapRowToHome(row) : null;
+      });
     },
 
     async listByCountry(countryCode, limit, offset) {
-      const rows = await db
-        .selectFrom('homes')
-        .selectAll()
-        .where('country_code', '=', countryCode)
-        .orderBy('created_at', 'desc')
-        .limit(limit)
-        .offset(offset)
-        .execute();
-      return rows.map(mapRowToHome);
+      return withDbErrorMapping('homes.listByCountry', async () => {
+        const rows = await db
+          .selectFrom('homes')
+          .selectAll()
+          .where('country_code', '=', countryCode)
+          .orderBy('created_at', 'desc')
+          .limit(limit)
+          .offset(offset)
+          .execute();
+        return rows.map(mapRowToHome);
+      });
     },
 
     async listUnassignedWithInterest(limit) {
-      const rows = await db
-        .selectFrom('homes')
-        .selectAll()
-        .where('has_interest', '=', true)
-        .where('assigned_to', 'is', null)
-        .orderBy('last_visit_at', 'asc')
-        .limit(limit)
-        .execute();
-      return rows.map(mapRowToHome);
+      return withDbErrorMapping('homes.listUnassignedWithInterest', async () => {
+        const rows = await db
+          .selectFrom('homes')
+          .selectAll()
+          .where('has_interest', '=', true)
+          .where('assigned_to', 'is', null)
+          .orderBy('last_visit_at', 'asc')
+          .limit(limit)
+          .execute();
+        return rows.map(mapRowToHome);
+      });
     },
 
     async listAssignedTo(userId, fromDate, toDate) {
-      const rows = await db
-        .selectFrom('homes')
-        .innerJoin('assignments', 'assignments.home_id', 'homes.id')
-        .selectAll('homes')
-        .where('assignments.assignee_id', '=', userId)
-        .where('assignments.scheduled_date', '>=', fromDate)
-        .where('assignments.scheduled_date', '<=', toDate)
-        .orderBy('assignments.scheduled_date', 'asc')
-        .execute();
-      return rows.map(mapRowToHome);
+      return withDbErrorMapping('homes.listAssignedTo', async () => {
+        const rows = await db
+          .selectFrom('homes')
+          .innerJoin('assignments', 'assignments.home_id', 'homes.id')
+          .selectAll('homes')
+          .where('assignments.assignee_id', '=', userId)
+          .where('assignments.scheduled_date', '>=', fromDate)
+          .where('assignments.scheduled_date', '<=', toDate)
+          .orderBy('assignments.scheduled_date', 'asc')
+          .execute();
+        return rows.map(mapRowToHome);
+      });
     },
 
     async setAssignedTo(homeId, userId) {
-      await db
-        .updateTable('homes')
-        .set({
-          assigned_to: userId,
-          assigned_at: userId ? new Date() : null,
-          updated_at: new Date(),
-        })
-        .where('id', '=', homeId)
-        .execute();
+      await withDbErrorMapping('homes.setAssignedTo', async () => {
+        await db
+          .updateTable('homes')
+          .set({
+            assigned_to: userId,
+            assigned_at: userId ? new Date() : null,
+            updated_at: new Date(),
+          })
+          .where('id', '=', homeId)
+          .execute();
+      });
     },
   };
 }

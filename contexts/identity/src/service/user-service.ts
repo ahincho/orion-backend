@@ -55,7 +55,7 @@ export function createUserService(deps: UserServiceDeps): UserService {
   return {
     async register(input: CreateUserInput) {
       if (await userRepository.existsByEmail(input.email)) {
-        throw ApiError.conflict('Email already registered', { email: input.email });
+        throw ApiError.emailTaken(input.email);
       }
       const id = randomUUID();
       const passwordHash = await hashPassword(input.password);
@@ -75,11 +75,11 @@ export function createUserService(deps: UserServiceDeps): UserService {
     async authenticate(email, password) {
       const user = await userRepository.findByEmail(email);
       if (!user || !user.active) {
-        throw ApiError.unauthorized('Invalid credentials');
+        throw ApiError.invalidCredentials();
       }
       const valid = await verifyPassword(password, user.passwordHash);
       if (!valid) {
-        throw ApiError.unauthorized('Invalid credentials');
+        throw ApiError.invalidCredentials();
       }
       const token = await jwtSigner.sign(user.id, user.email, user.role);
       await emitUserLoggedIn(user);
@@ -88,15 +88,21 @@ export function createUserService(deps: UserServiceDeps): UserService {
 
     async getById(id) {
       const user = await userRepository.findById(id);
-      if (!user) throw ApiError.notFound('User');
+      if (!user) throw ApiError.userNotFound();
       return toPublicUser(user);
     },
 
     async changePassword(userId, currentPassword, newPassword) {
       const user = await userRepository.findById(userId);
-      if (!user) throw ApiError.notFound('User');
+      if (!user) throw ApiError.userNotFound();
       const valid = await verifyPassword(currentPassword, user.passwordHash);
-      if (!valid) throw ApiError.unauthorized('Current password is incorrect');
+      if (!valid) {
+        throw ApiError.unauthorized('Current password is incorrect', {
+          code: 'auth.wrong_current_password',
+          message: 'Current password is incorrect',
+          path: 'currentPassword',
+        });
+      }
       const newHash = await hashPassword(newPassword);
       await userRepository.updatePassword(userId, newHash);
     },

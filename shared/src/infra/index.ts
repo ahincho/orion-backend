@@ -4,3 +4,4 @@ export {
   type SecretsReader,
   type SecretsReaderConfig,
 } from './secrets-reader.js';
+export { withDbErrorMapping } from './db-wrapper.js';

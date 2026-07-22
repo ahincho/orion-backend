@@ -4,9 +4,15 @@
 // Use for JWT signing keys, DB credentials, and any other sensitive config.
 // ARN is read once via SSM (the ARN itself is not a secret) and then the
 // secret value is fetched and cached.
+//
+// All AWS SDK failures are surfaced as ApiError.awsUnavailable so callers
+// receive a structured ErrorDetail (code: aws.unavailable, meta.dependency).
+// Missing required secrets are surfaced as ApiError.internal because they
+// indicate a deploy/configuration bug, not an availability incident.
 // =============================================================================
 
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
+import { ApiError } from '../http/api-error.js';
 
 const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -51,23 +57,29 @@ export function createSecretsReader(config: SecretsReaderConfig = {}): SecretsRe
     const cached = getCached(secretArn);
     if (cached !== undefined) return cached;
 
+    let result;
     try {
-      const result = await client.send(new GetSecretValueCommand({ SecretId: secretArn }));
-      const value = result.SecretString;
-      if (value !== undefined) {
-        setCached(secretArn, value);
-      }
-      return value;
+      result = await client.send(new GetSecretValueCommand({ SecretId: secretArn }));
     } catch (err) {
-      // Re-throw with context for debugging
-      throw new Error(`Failed to read secret ${secretArn}: ${(err as Error).message}`);
+      throw ApiError.awsUnavailable('Secrets Manager', err);
     }
+    const value = result.SecretString;
+    if (value !== undefined) {
+      setCached(secretArn, value);
+    }
+    return value;
   }
 
   async function getRequiredString(secretArn: string): Promise<string> {
     const value = await getString(secretArn);
     if (value === undefined) {
-      throw new Error(`Secret not found or empty: ${secretArn}`);
+      throw new ApiError(500, `Required secret not found or empty: ${secretArn}`, {
+        details: {
+          code: 'config.secret_missing',
+          message: `Required secret not found or empty: ${secretArn}`,
+          path: secretArn,
+        },
+      });
     }
     return value;
   }
