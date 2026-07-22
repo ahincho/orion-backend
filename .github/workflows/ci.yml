@@ -261,14 +261,15 @@ jobs:
   # but failed the moment the production migrator ran. This job catches
   # that class of bug in CI before the change reaches main.
   #
-  # Pin: @dev temporarily. The recipe was rolled back from @main to
-  # @dev in spark-match-01-devops commit d8b819c to ship a fix for
-  # node-pg-migrate v9 --schema [array] bug (PR #122 validation).
-  # Will move back to @main after the cookbook PR dev -> main lands.
+  # Pin: @main. The recipe was added in spark-match-01-devops PR #91,
+  # promoted @dev -> @main in PR #92, briefly rolled back to @dev for
+  # the v9 --schema array bug fix (commit d8b819c), and is back on
+  # @main as of cookbook PR #93. Validation runs in this consumer
+  # (orion-backend PR #122); once merged the pin stays at @main.
   # ---------------------------------------------------------------------------
   migrations-dry-run:
     name: migrations-dry-run
-    uses: spark-match/spark-match-01-devops/.github/workflows/migrations-dry-run.yml@dev
+    uses: spark-match/spark-match-01-devops/.github/workflows/migrations-dry-run.yml@main
     with:
       environment-name: ci
       postgres-version: '16'
