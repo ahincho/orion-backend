@@ -28,6 +28,12 @@ permissions:
 
 jobs:
   migrate:
+    # environment: is required here so that ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+    # in this job's context resolves to the dev-env-scoped secret (not null).
+    # Without it, the migrate job runs in the wrapper repo's default context,
+    # where the secret is undefined, and the cookbook's aws-actions/
+    # configure-aws-credentials step fails to assume the OIDC role.
+    environment: ${{ inputs.environment }}
     uses: spark-match/spark-match-01-devops/.github/workflows/migrations.yml@main
     with:
       environment-name: ${{ inputs.environment }}
