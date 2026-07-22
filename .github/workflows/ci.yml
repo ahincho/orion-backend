@@ -261,10 +261,10 @@ jobs:
   # but failed the moment the production migrator ran. This job catches
   # that class of bug in CI before the change reaches main.
   #
-  # Pin: @dev. The recipe was added in spark-match-01-devops PR #91 and
-  # pinned to @dev per docs/VERSIONING.md. The consumer pins to @dev while
-  # the recipe is in-flight on @dev; will move to @main after cookbook PR
-  # dev -> main lands.
+  # Pin: @main. The recipe was added in spark-match-01-devops PR #91 and
+  # promoted from @dev to @main in PR #92. Validated end-to-end by this
+  # consumer (orion-backend PR #121); the consumer pins to @main now that
+  # the recipe is production-stable.
   # ---------------------------------------------------------------------------
   migrations-dry-run:
     name: migrations-dry-run

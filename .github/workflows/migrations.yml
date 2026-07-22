@@ -15,9 +15,9 @@
 #      Environment gate (so the same approval flow as deploy applies).
 #   3. Forwards AWS_DEPLOY_ROLE_ARN from the chosen environment's secrets.
 #
-# Pin: @dev. The cookbook recipe was added in PR #91 and promoted to
-# @dev; this wrapper pins to @dev while the recipe is in-flight on @dev.
-# Both move to @main together once the cookbook PR dev -> main lands.
+# Pin: @main. The cookbook recipe (spark-match-01-devops PR #91, promoted
+# to @main in PR #92) is now production-stable, so this wrapper pins to
+# @main per spark-match-01-devops/docs/VERSIONING.md.
 #
 # To add prod support:
 #   1. Add `prod` to the `environment` choice below.
@@ -53,7 +53,7 @@ permissions:
 jobs:
   migrate:
     name: "migrate (env=${{ inputs.environment }})"
-    uses: spark-match/spark-match-01-devops/.github/workflows/migrations.yml@dev
+    uses: spark-match/spark-match-01-devops/.github/workflows/migrations.yml@main
     with:
       environment-name: ${{ inputs.environment }}
       function-name: orion-identity-migrate-${{ inputs.environment }}
