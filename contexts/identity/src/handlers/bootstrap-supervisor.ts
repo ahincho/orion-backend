@@ -171,11 +171,22 @@ export const handler = async (event: BootstrapInput | null | undefined): Promise
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error('bootstrap failed', { error: message });
+    const errorName = err instanceof Error ? err.name : 'unknown';
+    const errorCode =
+      typeof err === 'object' && err !== null && '$metadata' in err
+        ? String((err as { $metadata: { httpStatusCode?: number } }).$metadata.httpStatusCode ?? '')
+        : '';
+    logger.error('bootstrap failed', { error: message, errorName, errorCode });
     return {
       created: 0,
       skipped: 0,
-      errors: [{ email: 'unknown', code: 'bootstrap.failure', message }],
+      errors: [
+        {
+          email: 'unknown',
+          code: 'bootstrap.failure',
+          message: `${message} (${errorName}${errorCode ? ` http=${errorCode}` : ''})`,
+        },
+      ],
     };
   } finally {
     subsegment?.close();
