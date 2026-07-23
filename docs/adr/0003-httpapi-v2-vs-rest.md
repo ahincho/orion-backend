@@ -1,57 +1,58 @@
-# 0003 - HTTP API v2 instead of REST API Gateway
+# 0003 - HTTP API v2 en lugar de REST API Gateway
 
-- Status: Accepted (2026-06-30, during repo bootstrap)
+- Estado: Aceptado (2026-06-30, durante el bootstrap del repo)
 - Deciders: @ahincho
 - Supersedes: -
 
-## Context and Problem Statement
+## Contexto y problema
 
-API Gateway has two products: REST API (v1) and HTTP API (v2). We need
-to expose a backend with JWT-protected routes, Lambda Authorizer
-support, custom request/response transformations, and a per-route
-handler binding. Both versions support Lambda Authorizer, but they
-differ in cost, feature set, and event shape.
+API Gateway tiene dos productos: REST API (v1) y HTTP API (v2).
+Necesitamos exponer un backend con rutas protegidas por JWT, soporte
+de Lambda Authorizer, transformaciones custom de request/response y un
+binding por handler por ruta. Las dos versiones soportan Lambda
+Authorizer pero difieren en costo, feature set y shape del evento.
 
-## Decision
+## Decisión
 
-We expose the backend as **HTTP API v2**.
+Exponemos el backend como **HTTP API v2**.
 
-- `ApiType: HTTP` in `template.yaml`.
-- Lambda Authorizer (`contexts/authorizer/`) bound to all routes.
-- Event shape: `APIGatewayProxyHandlerV2` (`event.version === '2.0'`).
-- Per-route Lambda binding (`each route -> one Lambda`) is enforceable
-  because each bounded context is small (1-4 Lambdas).
+- `ApiType: HTTP` en `template.yaml`.
+- Lambda Authorizer (`contexts/authorizer/`) bindeado a todas las
+  rutas.
+- Shape del evento: `APIGatewayProxyHandlerV2` (`event.version === '2.0'`).
+- Binding por ruta por Lambda (cada ruta -> una Lambda) es enforceable
+  porque cada bounded context es chico (1-4 Lambdas).
 
-## Why not REST API
+## Por qué no REST API
 
-- REST API is ~3x more expensive per million requests.
-- REST API has request/response transformation steps (request
-  templates, integration responses) that we do not need because
-  Lambda already returns a JSON body we control end-to-end via
+- REST API es ~3x más caro por millón de requests.
+- REST API tiene pasos de transformación de request/response (request
+  templates, integration responses) que no necesitamos porque la Lambda
+  ya devuelve un body JSON que controlamos de punta a punta vía
   `buildHandler()`.
-- REST API integrations with Lambda Authorizer require VTL; HTTP API v2
-  passes the authorizer's JSON context directly to the integration, so
-  `event.requestContext.authorizer.lambda.<custom>` is one level of
-  indirection, not two.
-- HTTP API v2 does NOT support API keys / usage plans; not needed.
+- Las integraciones de REST API con Lambda Authorizer requieren VTL;
+  HTTP API v2 pasa el contexto JSON del authorizer directo a la
+  integración, así que `event.requestContext.authorizer.lambda.<custom>`
+  es un nivel de indirección, no dos.
+- HTTP API v2 NO soporta API keys / usage plans; no los necesitamos.
 
-## Consequences
+## Consecuencias
 
-### Positive
+### Positivas
 
-- Lower cost and simpler configuration.
-- Lambda receives v2 events with `routeKey`, `rawPath`,
-  `requestContext.authorizer.lambda`, etc. directly.
-- JWT validation can stay in a separate Lambda Authorizer (we do NOT
-  enable API Gateway's built-in JWT validation) because we use HS256
-  with a custom signing secret in Secrets Manager.
+- Menor costo y configuración más simple.
+- La Lambda recibe eventos v2 con `routeKey`, `rawPath`,
+  `requestContext.authorizer.lambda`, etc. directamente.
+- La validación JWT puede quedarse en un Lambda Authorizer aparte (NO
+  activamos la validación JWT built-in de API Gateway) porque usamos
+  HS256 con un secreto de firma custom en Secrets Manager.
 
-### Negative
+### Negativas
 
-- HTTP API v2 supports fewer features than REST API (no WAF, no
-  request validation, no usage plans). If the project needs WAF in the
-  future, an external Lambda-based WAF-equivalent or a CloudFront
-  distribution in front of HTTP API will be required.
-- v2 event lacks some `requestContext.identity.*` fields found in v1;
-  we work around it for IP/UA logging in Phase 2+ via Middy header
-  normalization.
+- HTTP API v2 soporta menos features que REST API (sin WAF, sin
+  request validation, sin usage plans). Si el proyecto necesita WAF a
+  futuro, se requerirá un Lambda-based WAF-equivalent externo o una
+  distribución CloudFront delante del HTTP API.
+- El evento v2 no tiene algunos campos `requestContext.identity.*` que
+  sí están en v1; lo sorteamos para logging de IP/UA en Phase 2+ vía
+  Middy header normalization.

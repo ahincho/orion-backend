@@ -1,79 +1,81 @@
-# 0004 - Lambda Authorizer (REQUEST) for custom JWT authentication
+# 0004 - Lambda Authorizer (REQUEST) para autenticación JWT custom
 
-- Status: Accepted (2026-06-30, during repo bootstrap)
+- Estado: Aceptado (2026-06-30, durante el bootstrap del repo)
 - Deciders: @ahincho
 - Supersedes: -
 
-## Context and Problem Statement
+## Contexto y problema
 
-Authentication must be enforced on every route except public identity
-endpoints (`POST /v1/identity/register`, `POST /v1/identity/login`).
-The candidate approaches are:
+La autenticación debe enforcecerse en toda ruta excepto los endpoints
+públicos de identity (`POST /v1/auth/register`, `POST /v1/auth/login`).
+Los candidatos son:
 
-1. **Lambda Authorizer** in API Gateway (REST API) or HTTP API v2 (both
-   `REQUEST` and `SIMPLE` types).
-2. **Cognito User Pool Authorizer** (only on REST API, only JWT
-   validation).
-3. **Custom authorizer via JWT validation inside the Lambda** (no
-   API Gateway authorizer).
+1. **Lambda Authorizer** en API Gateway (REST API) o HTTP API v2
+   (tipos `REQUEST` y `SIMPLE`).
+2. **Cognito User Pool Authorizer** (solo en REST API, solo validación
+   JWT).
+3. **Authorizer custom vía validación JWT dentro de la Lambda** (sin
+   authorizer de API Gateway).
 
-## Decision
+## Decisión
 
-We use **Lambda Authorizer of type `REQUEST`** on every protected
-route, exposed via a single Lambda in `contexts/authorizer/`.
+Usamos **Lambda Authorizer de tipo `REQUEST`** en cada ruta protegida,
+expuesto mediante una única Lambda en `contexts/authorizer/`.
 
-- The authorizer Lambda decodes the `Authorization: Bearer <jwt>`
-  header and verifies the HS256 signature against the secret stored in
+- La Lambda authorizer decodifica el header `Authorization: Bearer
+  <jwt>` y verifica la firma HS256 contra el secreto almacenado en
   Secrets Manager (`/orion/secret/jwt-arn`).
-- It validates `exp`, `iat`, `nbf` (with a small clock skew).
-- On success it returns
-  `{ isAuthorized: true, context: { userId, email, role } }` using
+- Valida `exp`, `iat`, `nbf` (con un pequeño clock skew).
+- En caso de éxito devuelve
+  `{ isAuthorized: true, context: { userId, email, role } }` usando
   `APIGatewaySimpleAuthorizerWithContextResult<AuthorizerContext>`.
-- API Gateway forwards `event.requestContext.authorizer.lambda` to the
-  business Lambda; `requireAuth()` in `@orion/shared` reads it.
+- API Gateway forwardea `event.requestContext.authorizer.lambda` a la
+  Lambda de negocio; `requireAuth()` en `@orion/shared` lo lee.
 
-## Why not Cognito
+## Por qué no Cognito
 
-- Cognito locks us into AWS user storage, managed UI, and pricing we do
-  not need for a bootstrap.
-- Cognito does not support HS256 (only RS256 with managed JWKS); the
-  project uses HS256 because the signing key lives in Secrets Manager
-  and rotates with the rest of our secrets.
-- The bootstrap needs a `users` table in PostgreSQL anyway (FK
-  relationships from `census.homes.assigned_user_id` etc.). Putting
-  the user store in Cognito and then mirroring it in PostgreSQL would
-  duplicate the data.
+- Cognito nos cierra a almacenamiento de usuarios en AWS, UI
+  administrada y pricing que no necesitamos para un bootstrap.
+- Cognito no soporta HS256 (solo RS256 con JWKS administrado); el
+  proyecto usa HS256 porque la signing key vive en Secrets Manager y
+  rota junto al resto de nuestros secretos.
+- El bootstrap necesita una tabla `users` en PostgreSQL de todas
+  formas (relaciones FK desde `census.homes.assigned_user_id` etc.).
+  Poner el user store en Cognito y después mirrorarlo en PostgreSQL
+  duplicaría los datos.
 
-## Why REQUEST (not SIMPLE) authorizer
+## Por qué REQUEST (no SIMPLE) authorizer
 
-- SIMPLE authorizer returns only `isAuthorized: bool` (no context).
-  We need to pass `userId` to downstream Lambdas to avoid a second DB
-  hit per request.
+- El authorizer SIMPLE devuelve solo `isAuthorized: bool` (sin
+  contexto). Necesitamos pasar `userId` a las Lambdas downstream
+  para evitar un segundo hit a la DB por request.
 
-## Why not Lambda-level JWT validation only
+## Por qué no validación JWT a nivel de Lambda solamente
 
-- Authentication logic must run before API Gateway dispatches; otherwise
-  we waste Lambda execution on requests that will be rejected, and the
-  Metrics/Logger are polluted with auth-failed traces for unauthenticated
-  traffic that never qualified as business requests.
+- La lógica de autenticación debe correr antes de que API Gateway
+  despache; si no, gastamos ejecución de Lambda en requests que
+  serán rechazados, y las Metrics/Logger se ensucian con traces de
+  auth-failed para tráfico no autenticado que nunca calificó como
+  request de negocio.
 
-## Consequences
+## Consecuencias
 
-### Positive
+### Positivas
 
-- One authorizer Lambda for the whole API; easy to add (e.g.) a
-  permission check, request-rate memo, or audit emission.
-- `AuthorizerContext` (with `userId`, `email`, `role`) is available in
-  every business Lambda without a second DB lookup.
-- Removing Cognito removes one billing line item and one set of AWS
-  console flows.
+- Un authorizer Lambda para toda la API; fácil de agregarle (por ej.)
+  una verificación de permisos, memo de request-rate o emisión de
+  auditoría.
+- `AuthorizerContext` (con `userId`, `email`, `role`) está disponible
+  en cada Lambda de negocio sin un segundo lookup a la DB.
+- Sacar Cognito elimina una línea de billing y un set de flujos de la
+  consola AWS.
 
-### Negative
+### Negativas
 
-- The authorizer Lambda is invoked once per protected request; cached
-  for ~5 minutes by HTTP API when its response includes
-  `identitySource`. We rely on the cache to keep the JWT verify cost
-  paid only once per session.
-- Custom authorizer has no built-in token-revocation flow; revocation
-  is implemented at the JWT layer (short `exp`) plus an optional
-  `revoked_jti` table for explicit logout (Phase 2+).
+- La Lambda authorizer se invoca una vez por request protegida;
+  cacheada por ~5 minutos por HTTP API cuando su respuesta incluye
+  `identitySource`. Dependemos del cache para que el costo de
+  verificación JWT se pague una sola vez por sesión.
+- El authorizer custom no tiene un flujo built-in de token-revocation;
+  la revocación se implementa a nivel de JWT (`exp` corto) más una
+  tabla opcional `revoked_jti` para logout explícito (Phase 2+).

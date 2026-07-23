@@ -1,63 +1,65 @@
 # =============================================================================
-# ORION Backend - Architecture
+# ORION Backend - Arquitectura
 # =============================================================================
-# High-level design for the serverless DDD+EDA backend.
+# Diseño de alto nivel para el monolito serverless DDD+EDA.
 # =============================================================================
 
-## Overview
+## Visión general
 
-ORION backend is a **serverless DDD+EDA monolith** running on AWS Lambda.
-Each bounded context owns its database schema and exposes its operations
-as a set of Lambda functions, each bound to one HTTP API v2 route. Cross-
-context communication happens exclusively through Amazon EventBridge.
+El backend ORION es un **monolito serverless DDD+EDA** corriendo sobre AWS
+Lambda. Cada bounded context posee su propio esquema de base de datos y
+expone sus operaciones como un conjunto de funciones Lambda, cada una
+asociada a una ruta HTTP API v2. La comunicación entre contextos ocurre
+exclusivamente a través de Amazon EventBridge.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  HTTP API v2 (REST-style, JWT validated by Lambda Authorizer)    │
+│  HTTP API v2 (estilo REST, JWT validado por Lambda Authorizer)    │
 └────┬──────────────┬──────────────┬──────────────┬───────────────┘
      │              │              │              │
      ▼              ▼              ▼              ▼
-┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐  ← TypeScript Lambdas
-│Identity │   │ Census  │   │Networks │   │  Risk   │     (1 per use case)
+┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐  ← Lambdas TypeScript
+│Identity │   │ Census  │   │Networks │   │  Risk   │     (1 por caso de uso)
 │  (auth) │   │  (P1)   │   │  (P2)   │   │  (P3)   │
 └────┬────┘   └────┬────┘   └────┬────┘   └────┬────┘
      │             │              │              │
      ▼             ▼              ▼              ▼
 ┌──────────────────────────────────────────────────────┐
-│  EventBridge bus (orion-events-${Environment})       │  ← EDA backbone
+│  Bus EventBridge (orion-events-${Environment})       │  ← backbone EDA
 └────┬─────────────────────────────────────────────────┘
      │
      ▼
 ┌─────────────────────────────┐
-│ PostgreSQL (Aurora Serverless v2) — managed in orion-infrastructure
+│ PostgreSQL (Aurora Serverless v2) — gestionado en orion-infrastructure
 │   schemas: identity, census, networks, risk, postsale, public
 └──────────────────────────────────────────────────────┘
 ```
 
-## Layered architecture (within each bounded context)
+## Arquitectura en capas (dentro de cada bounded context)
 
 ```
-handlers/        ← Lambda entry points (thin, ~15 lines each)
-   │ depends on
+handlers/        ← puntos de entrada Lambda (delgados, ~15 líneas cada uno)
+   │ depende de
    ▼
-service/         ← Application service (closure factory, no class)
-   │ depends on
+service/         ← servicio de aplicación (factory por closure, sin clase)
+   │ depende de
    ▼
-infra/           ← Kysely repositories + DB connection
-   │ depends on
+infra/           ← repositorios Kysely + conexión a DB
+   │ depende de
    ▼
-domain/          ← Plain TS interfaces + Zod event schemas
-                    (zero dependencies on infra or service)
+domain/          ← interfaces planas en TS + schemas Zod de eventos
+                    (cero dependencias sobre infra o service)
 ```
 
-**Dependency rule:** arrows only point downward. `domain/` never imports
-from `service/`, `infra/`, or `handlers/`. The composition root
-(`composition.ts`) wires everything together via a lazy singleton pattern.
+**Regla de dependencia:** las flechas solo apuntan hacia abajo.
+`domain/` nunca importa desde `service/`, `infra/` ni `handlers/`. El
+composition root (`composition.ts`) cablea todo mediante un patrón de
+singleton perezoso con promesa guardada.
 
 ## Composition root (DI)
 
-Each context has a `composition.ts` that exposes `buildContext()` — a
-promise-guarded lazy singleton:
+Cada contexto tiene un `composition.ts` que expone `buildContext()` — un
+singleton perezoso protegido por promesa:
 
 ```ts
 let ctx: CensusContext | null = null;
@@ -78,107 +80,113 @@ export async function buildContext(): Promise<CensusContext> {
 }
 ```
 
-This survives Lambda warm starts (cached on `ctx`) without leaking
-connections on cold paths.
+Esto sobrevive los warm starts de Lambda (cacheado en `ctx`) sin
+perder conexiones en cold paths.
 
 ## Shared kernel
 
-`shared/` is an npm workspace (`@orion/shared`) that provides:
+`shared/` es un workspace de npm (`@orion/shared`) que provee:
 
-- **auth**: `requireAuth(event)` middleware, `AuthContext` type, JWT helpers
-  (sign/verify via `jose`).
-- **http**: `ApiError` class hierarchy (badRequest/unauthorized/forbidden/
-  notFound/conflict/internal), `formatResponse()`, `formatError()`.
-- **events**: `createEventBridgeClient()` with retry (exponential backoff,
-  `FailedEntryCount` check, partial-failure handling for `publishMany`).
-- **infra**: `createSsmReader()` (5-min cache), `createSecretsReader()`
-  (5-min cache).
-- **logger**: `createLogger(serviceName)` wrapper over Powertools Logger.
-- **cors**: `getCorsOrigins()` reads whitelist from SSM
+- **auth**: middleware `requireAuth(event)`, tipo `AuthContext`, helpers
+  JWT (sign/verify vía `jose`).
+- **http**: jerarquía de la clase `ApiError` (badRequest/unauthorized/
+  forbidden/notFound/conflict/internal), `formatResponse()`,
+  `formatError()`.
+- **events**: `createEventBridgeClient()` con reintentos (backoff
+  exponencial, verificación de `FailedEntryCount`, manejo de fallos
+  parciales para `publishMany`).
+- **infra**: `createSsmReader()` (cache de 5 min), `createSecretsReader()`
+  (cache de 5 min).
+- **logger**: wrapper `createLogger(serviceName)` sobre Powertools
+  Logger.
+- **cors**: `getCorsOrigins()` lee la whitelist desde SSM
   `/orion/cors/allowed-origins`.
-- **templates**: `buildHandler(config)` Middy pipeline (header normalize →
-  JSON parse → log inject → X-Ray capture → auth check → error handler →
+- **templates**: pipeline Middy `buildHandler(config)` (header normalize
+  → JSON parse → log inject → X-Ray capture → auth check → error handler →
   CORS).
 
-## Lambda Authorizer (custom JWT)
+## Lambda Authorizer (JWT custom)
 
-We do **not use Cognito**. Authentication is implemented in
-`contexts/identity/` (users table in PostgreSQL, **scrypt**-hashed
-passwords with `N=16384, r=8, p=1`, JWT signed with HS256). All
-protected routes are gated by a single **Lambda Authorizer**
-(`contexts/authorizer/`) that:
+**No usamos Cognito.** La autenticación está implementada en
+`contexts/identity/` (tabla `users` en PostgreSQL, contraseñas
+**scrypt**-hasheadas con `N=16384, r=8, p=1`, JWT firmado con HS256).
+Todas las rutas protegidas se validan mediante un único **Lambda
+Authorizer** (`contexts/authorizer/`) que:
 
-1. Reads `Authorization: Bearer <jwt>` header.
-2. Verifies signature using secret from Secrets Manager
+1. Lee el header `Authorization: Bearer <jwt>`.
+2. Verifica la firma usando el secreto desde Secrets Manager
    (`/orion/secret/jwt-arn`).
-3. Validates `exp`, `iat`, `nbf`.
-4. Returns `{ isAuthorized: true, context: { userId, email, role } }`.
-5. API Gateway attaches context to `event.requestContext.authorizer.lambda`.
+3. Valida `exp`, `iat`, `nbf`.
+4. Devuelve `{ isAuthorized: true, context: { userId, email, role } }`.
+5. API Gateway adjunta el contexto a
+   `event.requestContext.authorizer.lambda`.
 
-The `requireAuth` middleware in `buildHandler()` reads this context and
-throws `ApiError.unauthorized()` if missing.
+El middleware `requireAuth` en `buildHandler()` lee este contexto y lanza
+`ApiError.unauthorized()` si está ausente.
 
 ## CQRS
 
-CQRS is implemented **implicitly** via fine-grained Lambdas (1 per use
-case). Commands are handlers that mutate state (e.g. `POST /v1/census/
-assignments`) and queries are handlers that read (`GET /v1/census/
-homes`). The split is enforced by:
-- Naming convention (`*-create`, `*-update`, `*-delete` vs `*-list`,
-  `*-get`).
-- Separate Zod schemas (`inputSchema` for command bodies, query params
-  parsed separately).
-- Event publication only in command handlers (read events are not
-  emitted; analytics derives them from state).
+CQRS está implementado **implícitamente** mediante Lambdas de grano fino
+(1 por caso de uso). Los comandos son handlers que mutan estado (ej.
+`POST /v1/census/assignments`) y las consultas son handlers que leen
+(`GET /v1/census/homes`). La separación se enforce mediante:
+- Convención de nombres (`*-create`, `*-update`, `*-delete` vs
+  `*-list`, `*-get`).
+- Schemas Zod separados (`inputSchema` para el body de comandos, los
+  query params se parsean aparte).
+- Publicación de eventos solo en handlers de comando (los read events
+  no se emiten; analítica los deriva del estado).
 
-## Persistence
+## Persistencia
 
-- **Engine:** PostgreSQL 14+ (Aurora Serverless v2 in production).
-- **Driver:** `pg` (node-postgres) with `kysely` for typed query building.
-- **Migrations:** `node-pg-migrate` v9 with Flyway-style naming
-  (`V<version>__<name>.sql`), tracking table `orion_migrations` in schema
-  `public`.
-- **Schemas:** one per bounded context (`identity`, `census`, `networks`,
-  `risk`, `postsale`). All under `public`.
-- **Transactions:** `db.transaction().execute(async trx => ...)` for
-  multi-step writes (Phase 2+).
+- **Motor:** PostgreSQL 14+ (Aurora Serverless v2 en producción).
+- **Driver:** `pg` (node-postgres) con `kysely` para query building
+  tipado.
+- **Migraciones:** `node-pg-migrate` v9 con naming estilo Flyway
+  (`V<version>__<name>.sql`), tabla de tracking `orion_migrations` en
+  schema `public`.
+- **Schemas:** uno por bounded context (`identity`, `census`,
+  `networks`, `risk`, `postsale`). Todos bajo `public`.
+- **Transacciones:** `db.transaction().execute(async trx => ...)` para
+  escrituras multi-paso (Phase 2+).
 
 ## Eventing (EDA)
 
-- **Bus:** `orion-events-${Environment}` (custom bus, not the default).
-- **Source naming:** `orion.<context>` (e.g. `orion.census`,
+- **Bus:** `orion-events-${Environment}` (bus custom, no el default).
+- **Source naming:** `orion.<context>` (ej. `orion.census`,
   `orion.identity`).
-- **Detail-type:** PascalCase past-tense (`CensusAssigned`,
+- **Detail-type:** PascalCase en pasado (`CensusAssigned`,
   `NetworkExpanded`, `MaintenanceScheduled`).
-- **Detail payload:** `{ version: 1, data: { ... } }` for forward
-  compatibility.
-- **Publishing:** `publish(event)` (single, retry 3x backoff) for
-  critical events; `publishMany(events)` (chunked 10/batch, retry +
-  `FailedEntryCount` check) for non-critical fan-out.
-- **Catalog:** [EVENT_CATALOG.md](EVENT_CATALOG.md) (TBD Phase 1).
+- **Detail payload:** `{ version: 1, data: { ... } }` para
+  compatibilidad a futuro.
+- **Publicación:** `publish(event)` (single, retry 3x backoff) para
+  eventos críticos; `publishMany(events)` (chunks de 10/lote, retry +
+  verificación de `FailedEntryCount`) para fan-out no crítico.
+- **Catálogo:** [EVENT_CATALOG.md](EVENT_CATALOG.md) (pendiente Phase 1).
 
-## Observability
+## Observabilidad
 
-- **Logs:** AWS Powertools Logger (JSON, auto-injected `correlationId`,
-  `xRayTraceId`, `lambdaContext.requestId`).
-- **Tracing:** X-Ray via Powertools Tracer; `Tracing: Active` on every
+- **Logs:** AWS Powertools Logger (JSON, con `correlationId`,
+  `xRayTraceId`, `lambdaContext.requestId` auto-inyectados).
+- **Tracing:** X-Ray vía Powertools Tracer; `Tracing: Active` en cada
   Lambda.
-- **Metrics:** Powertools Metrics (EMF, no PutMetricData API calls) — added
-  Phase 2+.
+- **Métricas:** Powertools Metrics (EMF, sin llamadas PutMetricData) —
+  agregado en Phase 2+.
 - **Dashboards:** CloudWatch (Phase 4+).
 
-## Cross-repo integration
+## Integración cross-repo
 
-- **orion-frontend** (Angular 22): consumes the HTTP API v2 endpoints.
-  Sends JWTs in `Authorization: Bearer <token>` header.
-- **orion-cognitive-agent** (Bedrock / AgentCore): publishes cognitive
-  recommendations via EventBridge; subscribes to domain events for
-  context.
-- **orion-infrastructure** (Terraform): provisions VPC, RDS Aurora,
-  EventBridge bus, Secrets Manager, IAM roles, SSM parameters.
-- **orion-article** (LaTeX report): read-only references to ORION docs.
+- **orion-frontend** (Angular 22): consume los endpoints HTTP API v2.
+  Envía JWTs en el header `Authorization: Bearer <token>`.
+- **orion-cognitive-agent** (Bedrock / AgentCore): publica
+  recomendaciones cognitivas vía EventBridge; se suscribe a eventos de
+  dominio para contexto.
+- **orion-infrastructure** (Terraform): aprovisiona VPC, RDS Aurora,
+  bus de EventBridge, Secrets Manager, roles IAM, parámetros SSM.
+- **orion-article** (reporte LaTeX): referencias de solo lectura a docs
+  de ORION.
 
 ## Roadmap
 
-See [DECISIONS.md](DECISIONS.md) for ADRs and [README.md](../README.md)
-for phase status.
+Ver [DECISIONS.md](DECISIONS.md) para los ADRs y [README.md](../README.md)
+para el estado por fase.
