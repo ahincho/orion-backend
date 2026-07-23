@@ -172,11 +172,21 @@ export const handler = async (event: BootstrapInput | null | undefined): Promise
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const errorName = err instanceof Error ? err.name : 'unknown';
+    const cause =
+      err instanceof Error && err.cause instanceof Error ? err.cause : undefined;
+    const causeName = cause?.name ?? '';
+    const causeMessage = cause?.message ?? '';
     const errorCode =
       typeof err === 'object' && err !== null && '$metadata' in err
         ? String((err as { $metadata: { httpStatusCode?: number } }).$metadata.httpStatusCode ?? '')
         : '';
-    logger.error('bootstrap failed', { error: message, errorName, errorCode });
+    logger.error('bootstrap failed', {
+      error: message,
+      errorName,
+      causeName,
+      causeMessage,
+      errorCode,
+    });
     return {
       created: 0,
       skipped: 0,
@@ -184,7 +194,7 @@ export const handler = async (event: BootstrapInput | null | undefined): Promise
         {
           email: 'unknown',
           code: 'bootstrap.failure',
-          message: `${message} (${errorName}${errorCode ? ` http=${errorCode}` : ''})`,
+          message: `${message} (${errorName}${causeName ? ` cause=${causeName}:${causeMessage}` : ''}${errorCode ? ` http=${errorCode}` : ''})`,
         },
       ],
     };
