@@ -83,12 +83,20 @@ jobs:
           AUTHORIZER_ROLE_ARN=$(aws ssm get-parameter \
             --name /orion/iam/apigateway-authorizer-invoke-role-arn \
             --query "Parameter.Value" --output text --region us-east-1)
-          if [ -z "$SUBNET_IDS" ] || [ -z "$SG_ID" ] || [ -z "$AUTHORIZER_ROLE_ARN" ]; then
-            echo "::error::Empty SSM value(s) (subnets=$SUBNET_IDS sg=$SG_ID authorizer=$AUTHORIZER_ROLE_ARN); abort."
+          # Stage 6 (ADR 0010): seed-users Lambda exec role ARN
+          # (orion-infrastructure modules/seed-users). Asumido por las Lambdas
+          # bootstrap-supervisor + seed-users en contexts/identity/template.yaml
+          # (Role: !Ref SeedUsersLambdaExecRoleArn). Mismo patron SSM publish:
+          # /orion/iam/seed-users-lambda-exec-role-arn publicado por modules/seed-users.
+          SEED_USERS_LAMBDA_EXEC_ROLE_ARN=$(aws ssm get-parameter \
+            --name /orion/iam/seed-users-lambda-exec-role-arn \
+            --query "Parameter.Value" --output text --region us-east-1)
+          if [ -z "$SUBNET_IDS" ] || [ -z "$SG_ID" ] || [ -z "$AUTHORIZER_ROLE_ARN" ] || [ -z "$SEED_USERS_LAMBDA_EXEC_ROLE_ARN" ]; then
+            echo "::error::Empty SSM value(s) (subnets=$SUBNET_IDS sg=$SG_ID authorizer=$AUTHORIZER_ROLE_ARN seed_users_lambda_exec=$SEED_USERS_LAMBDA_EXEC_ROLE_ARN); abort."
             exit 1
           fi
           # SAM CLI List type is comma-separated, no shell-escape needed.
-          PARAM_OVERRIDES="VpcSubnetIds=${SUBNET_IDS} LambdaSecurityGroupId=${SG_ID} ApigatewayAuthorizerInvokeRoleArn=${AUTHORIZER_ROLE_ARN}"
+          PARAM_OVERRIDES="VpcSubnetIds=${SUBNET_IDS} LambdaSecurityGroupId=${SG_ID} ApigatewayAuthorizerInvokeRoleArn=${AUTHORIZER_ROLE_ARN} SeedUsersLambdaExecRoleArn=${SEED_USERS_LAMBDA_EXEC_ROLE_ARN}"
           echo "Resolved --parameter-overrides: $PARAM_OVERRIDES"
           echo "parameter-overrides=$PARAM_OVERRIDES" >> "$GITHUB_OUTPUT"
 

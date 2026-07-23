@@ -58,6 +58,18 @@ Parameters:
     # reads it from there. Failing fast on missing param is better than
     # silently using a stale or wrong role ARN.
 
+  # Stage 6 (ADR 0010): IAM Lambda execution role for the
+  # bootstrap-supervisor + seed-users Lambdas (provisioned by
+  # orion-infrastructure `modules/seed-users/`, published to SSM as
+  # `/orion/iam/seed-users-lambda-exec-role-arn`). Resolved by the
+  # `CD - Deploy` workflow at deploy time and passed via
+  # `--parameter-overrides`; same no-Default pattern as
+  # ApigatewayAuthorizerInvokeRoleArn above.
+  SeedUsersLambdaExecRoleArn:
+    Type: String
+    Description: 'ARN del IAM Lambda execution role (`orion-seed-users-lambda-exec-<env>`) asumido por las Lambdas `bootstrap-supervisor` + `seed-users`. Provisionado por orion-infrastructure `modules/seed-users/` (Stage 4). Resuelto por `CD - Deploy` desde `/orion/iam/seed-users-lambda-exec-role-arn` y pasado via `--parameter-overrides`. No Default: fail-fast en deploy si falta.'
+    Default: ''
+
   # Phase 1 - VPC attachment for Lambda functions.
   VpcSubnetIds:
     Type: String
@@ -175,6 +187,7 @@ Resources:
         LambdaSecurityGroupId: !Ref LambdaSecurityGroupId
         NodeSharedLayerArn: !Ref NodeSharedLayer
         NodeRuntimeLayerArn: !Ref NodeRuntimeLayer
+        SeedUsersLambdaExecRoleArn: !Ref SeedUsersLambdaExecRoleArn
 
   IdentityRegisterIntegration:
     Type: AWS::ApiGatewayV2::Integration

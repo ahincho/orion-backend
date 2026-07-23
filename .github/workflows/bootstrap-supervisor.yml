@@ -1,0 +1,76 @@
+# =============================================================================
+# Bootstrap Supervisor - orion-backend-dev
+# =============================================================================
+# One-shot workflow that invokes the `orion-identity-bootstrap-supervisor-dev`
+# Lambda to seed the **first advisor** (highest RBAC role) in a freshly
+# bootstrapped environment. Subsequently, that advisor can use
+# /v1/auth/login + /v1/users.* to create the rest of the user base (or the
+# `Seed Users - orion-backend-dev` workflow can be run for canned dev data).
+#
+# Trigger: workflow_dispatch only. There is no automatic trigger - bootstrap
+# is intentionally a conscious, manual step. Re-running is safe: the Lambda
+# returns {skipped:1} when the bootstrap user already exists.
+#
+# IAM:
+#   - AWS_DEPLOY_ROLE_ARN (GitHub Environment secret for `dev`) is assumed
+#     via aws-actions/configure-aws-credentials. The role grants
+#     lambda:InvokeFunction on `orion-*-dev` ARNs (per
+#     orion-infrastructure modules/iam-sam-deploy-dev), so it can invoke
+#     this Lambda directly without an additional AWS::Lambda::Permission
+#     resource (none exists because this Lambda has no event source - the
+#     lambda-permission-source-arn custom check would reject one).
+#
+# Pin strategy: @main. The aws-lambda-invoke cookbook reached @main in
+# spark-match-01-devops PR #42 (commit ba5181a). Earlier pins used @dev
+# during in-flight validation.
+# =============================================================================
+
+name: Bootstrap Supervisor - orion-backend-dev
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment (only `dev` is wired)'
+        required: true
+        type: choice
+        default: dev
+        options: [dev]
+      full_name:
+        description: 'Full name of the bootstrap user. Defaults to "Bootstrap Advisor".'
+        required: false
+        type: string
+        default: 'Bootstrap Advisor'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: bootstrap-supervisor-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  invoke:
+    name: Invoke bootstrap Lambda
+    uses: spark-match/spark-match-01-devops/.github/workflows/aws-lambda-invoke.yml@main
+    with:
+      environment-name: ${{ inputs.environment }}
+      function-name: orion-identity-bootstrap-supervisor-${{ inputs.environment }}
+      payload: |
+        {
+          "role": "advisor",
+          "fullName": "${{ inputs.full_name }}"
+        }
+      aws-region: us-east-1
+      timeout-minutes: 2
+      summary-jq: |
+        {
+          "created": (.Payload.parsedBody.data.created // 0),
+          "skipped": (.Payload.parsedBody.data.skipped // 0),
+          "errors": (.Payload.parsedBody.data.errors // [] | length),
+          "user_id": (.Payload.parsedBody.data.user.id // null),
+          "user_email": (.Payload.parsedBody.data.user.email // null)
+        }
+    secrets:
+      aws_deploy_role_arn: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}

@@ -1,0 +1,90 @@
+# =============================================================================
+# Seed Users - orion-backend-dev
+# =============================================================================
+# Idempotent per-role seed runner. Calls the cookbook
+# `seed-users-{advisors|supervisors|agents}.yml` reusable workflow (one per
+# group), which in turn calls `orion-identity-seed-users-dev` via
+# `aws-lambda-invoke.yml` with the appropriate payload.
+#
+# Trigger: workflow_dispatch only. No automatic trigger. Each group invokes
+# its own cookbook so the three role-specific reusables can run independently
+# AND, more importantly, so a future expansion (4th group) does not require
+# modifying this caller.
+#
+# Concurrency groups:
+#   - `seed-users-{role}-{env}` (also used by the cookbook itself) so two
+#     workflow_dispatch invocations targeting the same role cancel each other
+#     out (mid-flight re-seeding is not safe - it can leave the DB in a
+#     half-applied state).
+#   - `cancel-in-progress: false` because we never want to cancel a seed
+#     invoke mid-flight; a follow-up run after a successful completion is
+#     always idempotent (created=0, skipped=N).
+#
+# IAM:
+#   - AWS_DEPLOY_ROLE_ARN (env:dev) is assumed via configure-aws-credentials.
+#     The role grants lambda:InvokeFunction on `orion-*-dev` ARNs (per
+#     orion-infrastructure modules/iam-sam-deploy-dev).
+#
+# Cookbook: spark-match-01-devops PR #98 (commit 7be9cb0 promoted, also
+# available on @main as ba5181a since Stage 5.6). Pin: @main so callers
+# always pick the released version.
+# =============================================================================
+
+name: Seed Users - orion-backend-dev
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment (only `dev` is wired)'
+        required: true
+        type: choice
+        default: dev
+        options: [dev]
+      role:
+        description: 'Role group to seed. Each role invokes its own cookbook.'
+        required: true
+        type: choice
+        default: advisors
+        options: [advisors, supervisors, agents]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: seed-users-${{ inputs.role }}-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  # Three discrete jobs - one per role cookbook. The other two stay in
+  # `skipped` state when not selected. We avoid matrix here because the
+  # `uses:` field cannot reference `${{ matrix.* }}` (no context is
+  # available at job-level `uses:`), and a single reusable workflow
+  # `uses:` cannot be templated via inputs either.
+  seed-advisors:
+    name: Seed advisors
+    if: ${{ inputs.role == 'advisors' }}
+    uses: spark-match/spark-match-01-devops/.github/workflows/seed-users-advisors.yml@main
+    with:
+      environment-name: ${{ inputs.environment }}
+    secrets:
+      aws_deploy_role_arn: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+
+  seed-supervisors:
+    name: Seed supervisors
+    if: ${{ inputs.role == 'supervisors' }}
+    uses: spark-match/spark-match-01-devops/.github/workflows/seed-users-supervisors.yml@main
+    with:
+      environment-name: ${{ inputs.environment }}
+    secrets:
+      aws_deploy_role_arn: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+
+  seed-agents:
+    name: Seed agents
+    if: ${{ inputs.role == 'agents' }}
+    uses: spark-match/spark-match-01-devops/.github/workflows/seed-users-agents.yml@main
+    with:
+      environment-name: ${{ inputs.environment }}
+    secrets:
+      aws_deploy_role_arn: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
