@@ -21,6 +21,26 @@ Parameters:
   NodeRuntimeLayerArn:
     Type: String
     Description: ARN of the runtime dependencies Lambda Layer (passed from root stack).
+  # -------------------------------------------------------------------------
+  # Stage 6 (ADR 0010 user-management) — bootstrap-supervisor + seed-users
+  # Lambdas. They share the dedicated IAM role provisioned by
+  # modules/seed-users in orion-infrastructure
+  # (orion-seed-users-lambda-exec-<env>). Its ARN is published to
+  # `/orion/iam/seed-users-lambda-exec-role-arn` and resolved by the
+  # CD - Deploy workflow at deploy time; we accept it here as a SAM
+  # parameter (no default — same pattern as ApigatewayAuthorizerInvokeRoleArn
+  # in the root stack).
+  #
+  # The SM secret ARN for the shared dev password is resolved at runtime by
+  # the handlers (via ssm.getRequiredString('/orion/seed/shared-dev-password-
+  # secret-arn')) to keep the wiring out of the SAM parameter surface, but is
+  # ALSO injectable via SHARED_DEV_PASSWORD_SECRET_ARN env var so the cookbook
+  # `aws-lambda-invoke.yml` recipe can override it on demand.
+  # -------------------------------------------------------------------------
+  SeedUsersLambdaExecRoleArn:
+    Type: String
+    Description: 'ARN del IAM Lambda execution role (`orion-seed-users-lambda-exec-<env>`) que asumen las Lambdas `bootstrap-supervisor` + `seed-users`. Provisionado por `modules/seed-users` en orion-infrastructure (terraform apply). Resuelto via SSM `/orion/iam/seed-users-lambda-exec-role-arn` por `CD - Deploy` y pasado como `--parameter-overrides`. No Default: fail-fast en deploy si falta.'
+    Default: ''
 
 Conditions:
   AttachToVpc: !And
@@ -284,6 +304,84 @@ Resources:
         Variables:
           POWERTOOLS_SERVICE_NAME: !Sub 'orion-identity-smoke-test-cleanup-${Environment}'
 
+  # ---------------------------------------------------------------------------
+  # Stage 6 of ADR 0010 user-management — bootstrap-supervisor + seed-users.
+  #
+  # These two Lambdas are invoked directly via `aws lambda invoke` from the GH
+  # Actions workflows `Bootstrap Supervisor - orion-backend-dev` and
+  # `Seed Users - orion-backend-dev`. They are NOT exposed via API Gateway.
+  #
+  # They assume the dedicated IAM role `SeedUsersLambdaExecRoleArn` provisioned
+  # by orion-infrastructure `modules/seed-users`. The inline policy of that
+  # role grants:
+  #   - secretsmanager:GetSecretValue/DescribeSecret over
+  #     (a) the shared dev password secret (Stage 4 output)
+  #     (b) the RDS app connection secret (Stage 4 output, from input)
+  #   - ssm:GetParameter(s) over /orion/seed/email-domain + /orion/db/secret-arn
+  #   - ec2:* ENI mgmt + Describe* (VPC attachment)
+  #   - logs:CreateLogGroup/Stream, PutLogEvents, Describe* on log groups
+  #     orion-bootstrap-supervisor-<env>, orion-seed-users-<env>, orion-seed-<env>-*
+  #   - xray:PutTraceSegments/TelemetryRecords/GetTraceSummaries/BatchGetTraces
+  #   - kms:Decrypt/GenerateDataKey/DescribeKey scoped to Project=orion +
+  #     Environment=<env> tag-condition.
+  # Cf. orion-infrastructure modules/seed-users/main.tf (Stage 4 + bridge PR #91).
+  #
+  # Both Lambdas have `SHARED_DEV_PASSWORD_SECRET_ARN` injected as env var to
+  # avoid an SSM read per invocation (the ARN itself is public but the secret
+  # value requires secretsmanager:GetSecretValue); the cookbook
+  # `aws-lambda-invoke.yml` can override the env var at invoke time if needed.
+  # ---------------------------------------------------------------------------
+  IdentityBootstrapSupervisorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'orion-identity-bootstrap-supervisor-${Environment}'
+      Handler: handlers/bootstrap-supervisor.handler
+      CodeUri: ./dist
+      # The Stage 4 IAM role. IdentityFunctionRole deliberately omits SM access
+      # on /orion/seed/shared-dev-password (only Project=orion tag-gated access);
+      # seed-users + bootstrap-supervisor use the more permissive
+      # SeedUsersLambdaExecRoleArn explicitly scoped to the 2 specific secrets
+      # + 1 specific SSM param.
+      Role: !Ref SeedUsersLambdaExecRoleArn
+      MemorySize: 512
+      Timeout: 30
+      VpcConfig: !If
+        - AttachToVpc
+        - SubnetIds: !Split [",", !Ref VpcSubnetIds]
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          LOG_LEVEL: INFO
+          POWERTOOLS_SERVICE_NAME: !Sub 'orion-identity-bootstrap-supervisor-${Environment}'
+          NODE_OPTIONS: --enable-source-maps
+          SHARED_DEV_PASSWORD_SECRET_ARN: !Sub '{{resolve:ssm:/orion/seed/shared-dev-password-secret-arn}}'
+
+  IdentitySeedUsersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'orion-identity-seed-users-${Environment}'
+      Handler: handlers/seed-users.handler
+      CodeUri: ./dist
+      Role: !Ref SeedUsersLambdaExecRoleArn
+      MemorySize: 512
+      Timeout: 60
+      VpcConfig: !If
+        - AttachToVpc
+        - SubnetIds: !Split [",", !Ref VpcSubnetIds]
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          LOG_LEVEL: INFO
+          POWERTOOLS_SERVICE_NAME: !Sub 'orion-identity-seed-users-${Environment}'
+          NODE_OPTIONS: --enable-source-maps
+          SHARED_DEV_PASSWORD_SECRET_ARN: !Sub '{{resolve:ssm:/orion/seed/shared-dev-password-secret-arn}}'
+
 Outputs:
   IdentityRegisterFunctionArn:
     Value: !GetAtt IdentityRegisterFunction.Arn
@@ -325,3 +423,11 @@ Outputs:
     Value: !GetAtt IdentityActivateUserFunction.Arn
     Export:
       Name: !Sub 'orion-identity-activate-user-arn-${Environment}'
+  IdentityBootstrapSupervisorFunctionArn:
+    Value: !GetAtt IdentityBootstrapSupervisorFunction.Arn
+    Export:
+      Name: !Sub 'orion-identity-bootstrap-supervisor-arn-${Environment}'
+  IdentitySeedUsersFunctionArn:
+    Value: !GetAtt IdentitySeedUsersFunction.Arn
+    Export:
+      Name: !Sub 'orion-identity-seed-users-arn-${Environment}'
