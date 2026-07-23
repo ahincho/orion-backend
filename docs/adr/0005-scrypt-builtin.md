@@ -1,68 +1,72 @@
-# 0005 - Password hashing with scrypt (built-in Node crypto)
+# 0005 - Hash de contraseñas con scrypt (built-in de Node crypto)
 
-- Status: Accepted (2026-07-19, during PR #7 hardening)
+- Estado: Aceptado (2026-07-19, durante el hardening del PR #7)
 - Deciders: @ahincho
-- Supersedes: bcrypt (originally declared in PR #5)
+- Supersedes: bcrypt (originalmente declarado en PR #5)
 
-## Context and Problem Statement
+## Contexto y problema
 
-Passwords must be stored as a one-way hash with a per-user salt. The
-candidates are:
+Las contraseñas deben almacenarse como un hash one-way con un salt
+por usuario. Los candidatos son:
 
-1. **bcrypt** (npm package): well-known, tuned for password hashing,
-   but adds an external native dependency.
-2. **argon2** (npm package): modern PHC winner, more expensive to
-   verify, also a native dependency.
-3. **scrypt** from `node:crypto`: built-in to Node 24, no native
-   dependency, tunable parameters.
+1. **bcrypt** (paquete npm): muy conocido, tuneado para password
+   hashing, pero suma una dependencia nativa externa.
+2. **argon2** (paquete npm): ganador moderno del PHC, más caro de
+   verificar, también dependencia nativa.
+3. **scrypt** de `node:crypto`: built-in en Node 24, sin dependencias
+   nativas, parámetros tuneables.
 
-The bootstrap initially shipped with `bcrypt`-style storage format (a
-decision from PR #5) but the implementation was rewritten to **scrypt
-without changing the feature surface**, on the basis that:
+El bootstrap inicialmente se despachó con formato de almacenamiento
+estilo `bcrypt` (decisión del PR #5) pero la implementación se
+reescribió a **scrypt sin cambiar la superficie de la feature**,
+sobre la base de que:
 
-- Node 24 ships an audited scrypt implementation in `node:crypto`.
-- `randomBytes` for salt and `timingSafeEqual` for verification are
-  already available.
-- Removing bcrypt removes a native build that CI has to compile on every
-  fresh runner (and which gates behind Python + compilers).
+- Node 24 trae una implementación de scrypt auditada en `node:crypto`.
+- `randomBytes` para salt y `timingSafeEqual` para verificación ya
+  están disponibles.
+- Sacar bcrypt remueve un native build que CI tiene que compilar en
+  cada runner limpio (y que se gatea detrás de Python + compiladores).
 
-## Decision
+## Decisión
 
-We use **scrypt** with the OWASP-recommended baseline
-parameters: `N = 16384`, `r = 8`, `p = 1`, output `keylen` of 64 bytes.
+Usamos **scrypt** con los parámetros baseline recomendados por OWASP:
+`N = 16384`, `r = 8`, `p = 1`, output `keylen` de 64 bytes.
 
-- Format on the wire:
-  `scrypt$N$r$p$salt$hash` (all base64url-encoded except the integer
-  parameters).
-- Salt: 16 random bytes per user.
-- Verification uses `timingSafeEqual` and re-derives the key from the
-  same N/r/p before comparing.
-- `maxmem: 256 MiB` cap (Cloud Lambda memory ceiling permits).
+- Formato en el wire:
+  `scrypt$N$r$p$salt$hash` (todo en base64url excepto los parámetros
+  enteros).
+- Salt: 16 bytes random por usuario.
+- La verificación usa `timingSafeEqual` y re-deriva la clave con los
+  mismos N/r/p antes de comparar.
+- Cap de `maxmem: 256 MiB` (el techo de memoria de Cloud Lambda lo
+  permite).
 
-## Why not bcrypt
+## Por qué no bcrypt
 
-- bcrypt requires an external package; native bindings are often the
-  slowest CI step on greenfield runners.
-- bcrypt's work factor would need to be re-tuned every 2-3 years as
-  hardware improves; scrypt's `N` factor is similarly tunable.
-- Auditing a single `node:crypto` call is easier than auditing a
-  transitive dependency.
+- bcrypt requiere un paquete externo; los native bindings suelen ser
+  el step más lento de CI en runners greenfield.
+- El work factor de bcrypt habría que re-tunearlo cada 2-3 años a
+  medida que mejora el hardware; el factor `N` de scrypt es
+  similarmente tuneable.
+- Auditar una sola llamada a `node:crypto` es más fácil que auditar
+  una dependencia transitiva.
 
-## Consequences
+## Consecuencias
 
-### Positive
+### Positivas
 
-- Zero native dependencies for authentication.
-- Stable hash format that survives Node version upgrades (the encode
-  format is portable; only the algorithm underneath may evolve via
-  parameters).
-- Performance: scrypt at N=16384 is ~80 ms on a Lambda at 1792 MB;
-  acceptable for a registration/login UX.
+- Cero dependencias nativas para autenticación.
+- Formato de hash estable que sobrevive upgrades de versión de Node
+  (el formato de encode es portable; solo el algoritmo subyacente
+  puede evolucionar vía parámetros).
+- Performance: scrypt con N=16384 es ~80 ms en una Lambda a 1792 MB;
+  aceptable para una UX de registro/login.
 
-### Negative
+### Negativas
 
-- We lose the option to switch password hashing algorithms without a
-  migration story; future re-hashing would need a column add for the
-  new algorithm (`alg` prefix already supports it: `scrypt$N$r$p$...`).
-- The 256 MiB `maxmem` cap will need updating if Aurora/EventBridge
-  raise it; tracked in tech debt.
+- Perdemos la opción de cambiar de algoritmo de hash de contraseñas
+  sin una historia de migración; un re-hash a futuro necesitaría una
+  columna nueva para el nuevo algoritmo (el prefijo `alg` ya lo
+  soporta: `scrypt$N$r$p$...`).
+- El cap de `maxmem` de 256 MiB necesitará actualizarse si
+  Aurora/EventBridge lo suben; tracked en tech debt.

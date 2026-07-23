@@ -1,61 +1,65 @@
-# 0008 - Amazon EventBridge as the cross-context bus
+# 0008 - Amazon EventBridge como bus entre contextos
 
-- Status: Accepted (2026-06-30, during repo bootstrap)
+- Estado: Aceptado (2026-06-30, durante el bootstrap del repo)
 - Deciders: @ahincho
 - Supersedes: -
 
-## Context and Problem Statement
+## Contexto y problema
 
-Bounded contexts must communicate without reaching into each other's
-databases. We need a transport for domain events (not commands):
-something that lets any context subscribe to "anything published in
-context X" without taking a dependency on the publisher's stack.
+Los bounded contexts deben comunicarse sin tocar las bases de datos
+del otro. Necesitamos un transporte para eventos de dominio (no
+commands): algo que le permita a cualquier contexto suscribirse a
+"todo lo publicado en el contexto X" sin tomar una dependencia del
+stack del publicador.
 
-## Decision
+## Decisión
 
-We use an **EventBridge bus** named
-`orion-events-${Environment}` (e.g. `orion-events-dev`).
+Usamos un **bus de EventBridge** llamado
+`orion-events-${Environment}` (ej. `orion-events-dev`).
 
-- **Per-event source:** `orion.<context>` (e.g. `orion.census`,
+- **Source por evento:** `orion.<context>` (ej. `orion.census`,
   `orion.identity`).
-- **Detail type:** PascalCase past-tense (`CensusAssigned`,
+- **Detail type:** PascalCase en pasado (`CensusAssigned`,
   `UserRegistered`, `PasswordChanged`).
-- **Detail payload (envelope):** `{ version: 1, data: { ... } }` so
-  consumers can detect and refuse old-new mixes.
-- **Publishers** use a single client in `@orion/shared/events`:
-  - `publish(event)` -> single event with 3x exponential backoff and
-    `FailedEntryCount === 0` assertion.
-  - `publishMany(events)` -> chunks of 10, retry on
-    `FailedEntryCount > 0`, partial-failure handling.
-- **Consumers** in later phases are Lambda rules (Phase 2+); the
-  bootstrap only publishes.
+- **Detail payload (envelope):** `{ version: 1, data: { ... } }` así
+  los consumers pueden detectar y rechazar mixes viejo-nuevo.
+- **Los publicadores** usan un único cliente en `@orion/shared/events`:
+  - `publish(event)` -> evento único con backoff exponencial 3x y
+    aserción `FailedEntryCount === 0`.
+  - `publishMany(events)` -> chunks de 10, retry on
+    `FailedEntryCount > 0`, manejo de fallos parciales.
+- **Los consumers** (en fases posteriores) son reglas Lambda (Phase
+  2+); el bootstrap solo publica.
 
-## Why EventBridge (not SNS / SQS / Kafka)
+## Por qué EventBridge (no SNS / SQS / Kafka)
 
-- EventBridge is the AWS-native way to model domain events (no shared
-  queue, no consumer code in publisher).
-- Cross-account support for free (in case `orion-cognitive-agent`
-  consumes in another AWS account later).
-- 24-hour retention + DLQ-able targets come built-in.
-- SQS is a queue (each consumer needs its own queue + IAM); too low
-  level for "domain events".
-- Kafka is an operational tax we are not ready for in the bootstrap.
+- EventBridge es la forma AWS-native de modelar eventos de dominio
+  (sin queue compartida, sin código de consumer en el publicador).
+- Soporte cross-account gratis (por si `orion-cognitive-agent`
+  consume en otra cuenta AWS en el futuro).
+- Retención de 24 horas + targets DLQ-able vienen built-in.
+- SQS es una queue (cada consumer necesita su propia queue + IAM);
+  demasiado bajo nivel para "eventos de dominio".
+- Kafka es un impuesto operacional para el que no estamos listos en
+  el bootstrap.
 
-## Consequences
+## Consecuencias
 
-### Positive
+### Positivas
 
-- Publishers and subscribers are decoupled by design.
-- Schema (the envelope `{ version, data }`) is a forward-compatible
-  shape that lets consumers refuse unknown versions cleanly.
-- Retention and replay are configurable.
+- Publicadores y suscriptores desacoplados por diseño.
+- El schema (el envelope `{ version, data }`) es una shape
+  forward-compatible que permite a los consumers rechazar versiones
+  desconocidas limpio.
+- Retención y replay configurables.
 
-### Negative
+### Negativas
 
-- EventBridge has a hard ceiling of 256 KB per event. We keep payloads
-  small; the shared kernel enforces that.
-- Local emulation of EventBridge is approximate; integration tests
-  require a live AWS account.
-- Schema registry (e.g. Glue Registry or AppSync) is **not** used yet,
-  so event contracts live in this repo's Zod schemas (and will drift if
-  not disciplined). Phase 2 ADR will revisit.
+- EventBridge tiene un techo rígido de 256 KB por evento. Mantenemos
+  los payloads chicos; el shared kernel lo enforza.
+- La emulación local de EventBridge es aproximada; los tests de
+  integración requieren una cuenta AWS live.
+- El schema registry (ej. Glue Registry o AppSync) **no** se usa
+  todavía, así que los contratos de evento viven en los schemas Zod
+  de este repo (y pueden drift si no hay disciplina). Un ADR en
+  Phase 2 revisitará.

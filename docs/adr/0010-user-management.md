@@ -1,74 +1,82 @@
-# 0010 - Administrative user-management endpoints (3-tier RBAC)
+# 0010 - Endpoints administrativos de gestión de usuarios (RBAC 3-tier)
 
-- Status: Accepted (2026-07-22, during PR #119 / Stage 3)
+- Estado: Aceptado (2026-07-22, durante PR #119 / Stage 3)
 - Deciders: @ahincho
-- Supersedes: implicit RBAC decisions in ADR 0009 (which only covered JWT issuance)
+- Supersedes: decisiones implícitas de RBAC en ADR 0009 (que solo
+  cubría la emisión de JWT)
 
-## Context and Problem Statement
+## Contexto y problema
 
-After ADR 0009 (custom JWT, no Cognito), the identity context owns
-`identity.users` and issues HS256 tokens carrying `sub`, `email`, `role`.
-The original bootstrap shipped only `register`, `login`, `get-me`, and
-`change-password` — enough for a single-user system, not enough for a
-multi-role product.
+Después de ADR 0009 (JWT custom, sin Cognito), el contexto identity
+es dueño de `identity.users` y emite tokens HS256 que llevan `sub`,
+`email`, `role`. El bootstrap original despachó solo `register`,
+`login`, `get-me` y `change-password` — alcanza para un sistema
+single-user, no para un producto multi-rol.
 
-The product now needs an admin surface for:
-- Listing users (with pagination + filtering by role / active flag).
-- Reading a single user's profile by id.
-- Updating user fields (email, fullName, role, active).
-- Deactivating and reactivating users (soft delete — preserves FK history).
-- Renaming the self-service profile routes (`/v1/users/me` →
+El producto ahora necesita una superficie admin para:
+- Listar usuarios (con paginación + filtrado por rol / flag `active`).
+- Leer el perfil de un usuario por id.
+- Actualizar campos del usuario (email, fullName, role, active).
+- Desactivar y reactivar usuarios (soft delete — preserva historial
+  de FKs).
+- Renombrar las rutas self-service (`/v1/users/me` →
   `/v1/auth/me`, `/v1/users/me/password` → `/v1/auth/change-password`)
-  so the literal `{userId}` segment cannot shadow the admin
-  `GET /v1/users/{userId}` route.
+  para que el segmento literal `{userId}` no shadowee a la ruta admin
+  `GET /v1/users/{userId}`.
 
-Role taxonomy (Stage 2, PRs #117 and #118): three values, enforced by a
-CHECK constraint in `identity.users.role`:
-- `advisor` — top tier; full CRUD on all users.
-- `supervisor` — middle tier; CRUD only on `agent` targets.
-- `agent` — bottom tier; no admin endpoints.
+Taxonomía de roles (Stage 2, PRs #117 y #118): tres valores,
+enforced por una constraint CHECK en `identity.users.role`:
+- `advisor` — tier alto; CRUD completo sobre todos los usuarios.
+- `supervisor` — tier medio; CRUD solo sobre targets con rol
+  `agent`.
+- `agent` — tier bajo; sin endpoints administrativos.
 
-## Decision
+## Decisión
 
-Add 5 new Lambda handlers in `contexts/identity/src/handlers/`:
+Agregamos 5 nuevos handlers Lambda en `contexts/identity/src/handlers/`:
 
-| HTTP                   | Path                                  | Authz                        |
-| ---------------------- | ------------------------------------- | ---------------------------- |
-| `GET /v1/users`        | list paginated + filterable users     | advisor (any); supervisor (forced agent); agent 403 |
-| `GET /v1/users/{id}`   | fetch one user                        | advisor (any); supervisor (agent only); agent (self only) |
-| `PATCH /v1/users/{id}` | partial update (email/fullName/role/active) | per-field, see rules below |
-| `POST /v1/users/{id}/deactivate` | set `active=false` (soft delete) | advisor (any except self); supervisor (agent only, no self); agent 403 |
-| `POST /v1/users/{id}/activate`   | set `active=true`               | advisor (any); supervisor (agent only); agent 403 |
+| HTTP                              | Path                                  | Authz                            |
+| --------------------------------- | ------------------------------------- | -------------------------------- |
+| `GET /v1/users`                   | listar usuarios paginados + filtrables | advisor (cualquiera); supervisor (forzado a agent); agent 403 |
+| `GET /v1/users/{id}`              | obtener un usuario                    | advisor (cualquiera); supervisor (agent solo); agent (solo self) |
+| `PATCH /v1/users/{id}`            | update parcial (email/fullName/role/active) | por-campo, ver reglas abajo |
+| `POST /v1/users/{id}/deactivate`  | set `active=false` (soft delete)      | advisor (cualquiera salvo self); supervisor (agent solo, sin self); agent 403 |
+| `POST /v1/users/{id}/activate`    | set `active=true`                     | advisor (cualquiera); supervisor (agent solo); agent 403 |
 
-All five share the same IAM role + VPC config as the existing
-`Identity*Function`s and are wired via raw `AWS::ApiGatewayV2::Route`
-resources in the root `template.yaml` (the SAM-nested-stacks quirk
-already documented in the root template header).
+Los cinco comparten el mismo IAM role + VPC config que las
+`Identity*Function`s existentes y se wirean vía raw
+`AWS::ApiGatewayV2::Route` resources en el `template.yaml` raíz (el
+quirk de nested-stacks SAM ya documentado en el header del template
+raíz).
 
-### Self rules (universal, apply to every role)
+### Reglas de self (universales, aplican a todos los roles)
 
-- No self-deactivation (`POST .../{id}/deactivate` when `id === requesterId`).
-- No self role change (`PATCH /v1/users/{id}` with `role` set when
-  `id === requesterId`).
-- No self management of the own `active` flag (any value, even same).
-- Self **can** change own `email` and `fullName`.
-- Self **can** be re-activated by another admin (activate has no
-  self-rule; supervisors/advisors may re-enable a previously-deactivated
-  user including themselves).
+- No self-deactivation (`POST .../{id}/deactivate` cuando `id ===
+  requesterId`).
+- No self role change (`PATCH /v1/users/{id}` con `role` seteado
+  cuando `id === requesterId`).
+- No self-manage del propio flag `active` (cualquier valor, incluso
+  igual).
+- Self **puede** cambiar su propio `email` y `fullName`.
+- Self **puede** ser reactivado por otro admin (activate no tiene
+  self-rule; supervisors/advisors pueden re-habilitar a un usuario
+  previamente desactivado, incluyéndose).
 
-### Authorization matrix (authorization failures surface as
-`ApiError.forbidden` with structured `ErrorDetail[]` codes)
+### Matriz de autorización (los fallos de autorización se exponen como
+`ApiError.forbidden` con códigos `ErrorDetail[]` estructurados)
 
-- `auth.role_required` (code) — requester role cannot perform this
-  action at all (e.g. `agent` calling any admin endpoint).
-- `auth.role_mismatch` — requester may manage *some* users but not this
-  target (e.g. `supervisor` trying to update an `advisor`).
+- `auth.role_required` (code) — el rol del requester no puede
+  realizar esta acción en absoluto (ej. `agent` llamando cualquier
+  endpoint admin).
+- `auth.role_mismatch` — el requester puede administrar *algunos*
+  usuarios pero no este target (ej. `supervisor` intentando updatear
+  un `advisor`).
 - `user.self_deactivation` / `user.self_role_change` /
-  `user.self_managed_field` — the universal self rules.
+  `user.self_managed_field` — las reglas universales de self.
 
-### Response envelope
+### Envelope de respuesta
 
-List responses use a new shared envelope
+Las respuestas de list usan un nuevo envelope compartido
 (`shared/src/http/paginated.ts:buildPaginatedResponse`):
 
 ```ts
@@ -78,85 +86,90 @@ List responses use a new shared envelope
 }
 ```
 
-`pagination.total` comes from a parallel `SELECT count(*)` over the same
-filter expression; the kysely query builder is reused for both queries so
-they cannot drift.
+`pagination.total` viene de un `SELECT count(*)` en paralelo sobre la
+misma filter expression; el query builder de kysely se reusa para
+ambas queries para que no puedan driftear.
 
-### Domain event
+### Evento de dominio
 
-A new `UserUpdatedEvent` (Zod schema in
-`contexts/identity/src/domain/events.ts`) is emitted for any state
-change (PATCH, activate, deactivate). It carries `changedBy`
-(requesterId) and only the fields that actually changed. The
-event-level refinement requires at least one changed field, so silent
-no-op calls (e.g. `PATCH /v1/users/{id}` with empty body — already
-blocked at the schema layer with a `refine`) cannot produce empty
-events.
+Un nuevo `UserUpdatedEvent` (schema Zod en
+`contexts/identity/src/domain/events.ts`) se emite ante cualquier
+cambio de estado (PATCH, activate, deactivate). Lleva `changedBy`
+(requesterId) y solo los campos que efectivamente cambiaron. El
+refine a nivel de evento exige al menos un campo cambiado, así
+calls no-op silenciosas (ej. `PATCH /v1/users/{id}` con body vacío —
+ya bloqueado en el schema con un `refine`) no pueden producir
+eventos vacíos.
 
-### Route rename (breaking)
+### Rename de rutas (breaking)
 
-`GET /v1/users/me` → `GET /v1/auth/me` and
-`POST /v1/users/me/password` → `POST /v1/auth/change-password`. The
-literal `/me` segment in the old path was incompatible with the new
-`{userId}` path parameter. The Lambda handlers (`IdentityGetMeFunction`,
-`IdentityChangePasswordFunction`) are reused — only the API Gateway
-`RouteKey` changes.
+`GET /v1/users/me` → `GET /v1/auth/me` y
+`POST /v1/users/me/password` → `POST /v1/auth/change-password`. El
+segmento literal `/me` en la ruta vieja era incompatible con el
+nuevo path parameter `{userId}`. Los handlers Lambda
+(`IdentityGetMeFunction`, `IdentityChangePasswordFunction`) se
+reusan — solo cambia el `RouteKey` de API Gateway.
 
-## Why split into 5 handlers instead of one `users.ts` dispatcher
+## Por qué dividir en 5 handlers en lugar de un dispatcher `users.ts`
 
-- One Lambda per route keeps memory + timeout independent (heavy list
-  queries don't affect the cheap `getById` Lambda).
-- Aligns with the existing convention (`register.ts`, `login.ts`,
-  `get-me.ts`, `change-password.ts`) and the SAM
-  `one-Lambda-per-route` pattern already documented in AGENTS.md.
-- Future per-handler tuning (memory, provisioned concurrency,
-  reserved concurrency) is trivial.
+- Una Lambda por ruta mantiene memoria + timeout independientes
+  (queries pesadas de listado no afectan al Lambda barato de
+  `getById`).
+- Se alinea con la convención existente (`register.ts`, `login.ts`,
+  `get-me.ts`, `change-password.ts`) y el patrón SAM
+  `one-Lambda-per-route` ya documentado en AGENTS.md.
+- Tuning por handler (memoria, provisioned concurrency, reserved
+  concurrency) en el futuro es trivial.
 
-## Why soft delete (deactivate) instead of DELETE
+## Por qué soft delete (deactivate) en lugar de DELETE
 
-- Preserves FKs from `census.homes.assigned_to`,
-  `census.assignments.assignee_id`, and `census.assignments.assigned_by`.
-- Enables audit / forensic analysis (last visit, last assignment, who
-  deactivated whom).
-- `authenticate` already refuses `active = false` rows, so deactivated
-  users cannot log in.
+- Preserva las FKs desde `census.homes.assigned_to`,
+  `census.assignments.assignee_id` y `census.assignments.assigned_by`.
+- Permite audit / análisis forense (última visita, última
+  asignación, quién desactivó a quién).
+- `authenticate` ya rechaza filas con `active = false`, así que los
+  usuarios desactivados no pueden loguearse.
 
-## Consequences
+## Consecuencias
 
-### Positive
+### Positivas
 
-- Clean admin surface with predictable, testable authorization rules.
-- Self-* invariants enforced server-side (not just convention).
-- Pagination + filtering keep the list endpoint usable at scale
-  (`perPage` clamped to `[1, 100]`, default 20).
-- Standardized `ErrorDetail[]` codes (`auth.role_required`,
-  `auth.role_mismatch`, `user.self_*`) let clients dispatch without
-  parsing message strings.
+- Superficie admin limpia con reglas de autorización predecibles y
+  testeables.
+- Invariantes de self-* enforced server-side (no solo por convención).
+- Paginación + filtrado mantienen usable el endpoint de listado a
+  escala (`perPage` clampado a `[1, 100]`, default 20).
+- Códigos `ErrorDetail[]` estandarizados (`auth.role_required`,
+  `auth.role_mismatch`, `user.self_*`) permiten a los clientes
+  dispatchear sin parsear message strings.
 
-### Negative
+### Negativas
 
-- 5 new Lambdas (and 5 new IAM permissions + 5 new
-  `AWS::ApiGatewayV2::Route` resources) increase stack surface; cold
-  start cost per route is paid individually.
-- JWT tokens issued before the role-rename deploy still carry the
-  pre-rename role names (`asesor`, `distribuidor`); the V009 backfill
-  handles existing DB rows, but in-flight tokens will fail
-  authorization checks until re-login. For dev this is acceptable.
-- Front-end (`orion-frontend`) must be updated to consume the renamed
-  `/v1/auth/me` and `/v1/auth/change-password` routes. Tracked as a
-  follow-up after PR #119.
+- 5 Lambdas nuevas (y 5 permisos IAM + 5 resources
+  `AWS::ApiGatewayV2::Route`) incrementan la superficie del stack; el
+  costo de cold start por ruta se paga individualmente.
+- Los tokens JWT emitidos antes del deploy de role-rename todavía
+  llevan los nombres de rol viejos (`asesor`, `distribuidor`); el
+  backfill de V009 maneja las filas existentes en la DB, pero los
+  tokens en vuelo van a fallar las verificaciones de autorización
+  hasta re-login. Aceptable para dev.
+- El front-end (`orion-frontend`) tiene que actualizarse para
+  consumir las rutas renombradas `/v1/auth/me` y
+  `/v1/auth/change-password`. Tracked como follow-up después de
+  PR #119.
 
-## References
+## Referencias
 
 - `contexts/identity/src/schemas/{pagination,user-id-param,list-users,update-user}.schema.ts`
 - `contexts/identity/src/handlers/{list-users,get-user,update-user,deactivate-user,activate-user}.ts`
-- `contexts/identity/src/service/user-service.ts` — `assertCanManageTarget`,
-  `assertNotSelfAction`, `listUsers`, `getUser`, `updateUser`,
-  `deactivateUser`, `activateUser`
+- `contexts/identity/src/service/user-service.ts` —
+  `assertCanManageTarget`, `assertNotSelfAction`, `listUsers`,
+  `getUser`, `updateUser`, `deactivateUser`, `activateUser`
 - `contexts/identity/src/domain/events.ts` — `UserUpdatedEvent`
 - `shared/src/http/paginated.ts` — `buildPaginatedResponse`
-- `contexts/identity/template.yaml` — 5 new `Identity*Function` resources
-- `template.yaml` — 5 new Integrations + Routes + Permissions + route
-  rename
+- `contexts/identity/template.yaml` — 5 nuevos resources
+  `Identity*Function`
+- `template.yaml` — 5 nuevas Integrations + Routes + Permissions +
+  rename de rutas
 - `migrations/V009__restrict_user_role_to_advisor_supervisor_agent.sql`
-- AGENTS.md → "RBAC (3-tier)" section
+- AGENTS.md → sección "RBAC (3-tier)"

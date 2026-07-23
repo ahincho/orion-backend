@@ -1,86 +1,92 @@
-# 0007 - PostgreSQL on Aurora Serverless v2 with kysely + node-pg-migrate
+# 0007 - PostgreSQL sobre Aurora Serverless v2 con kysely + node-pg-migrate
 
-- Status: Accepted (2026-06-30, during repo bootstrap)
+- Estado: Aceptado (2026-06-30, durante el bootstrap del repo)
 - Deciders: @ahincho
 - Supersedes: -
 
-## Context and Problem Statement
+## Contexto y problema
 
-The persistence layer must support:
+La capa de persistencia debe soportar:
 
-- A schema per bounded context (`identity`, `census`, `networks`, `risk`,
-  `postsale`, all under `public`).
-- Forward-only schema migrations on deploy.
-- Type-safe query building in TypeScript.
-- Cheap idle cost (the bootstrap is a single environment in a single
-  region and traffic is bursty).
+- Un schema por bounded context (`identity`, `census`, `networks`,
+  `risk`, `postsale`, todos bajo `public`).
+- Migraciones forward-only de schema en deploy.
+- Query building type-safe en TypeScript.
+- Costo idle barato (el bootstrap es un único environment en una única
+  región y el tráfico es a ráfagas).
 
-Options:
+Opciones:
 
-- **RDS PostgreSQL (provisioned):** predictable cost, but idle cost
-  is high for a bootstrap project.
-- **Aurora Serverless v2:** ACU auto-scaling, pay-per-second; cheaper
-  on idle but cold-start on first query is ~10s.
-- **DynamoDB:** not PostgreSQL; would change the API shape downstream.
-- **PlanetScale / Neon:** third-party; outside the AWS boundary we
-  otherwise work in.
+- **RDS PostgreSQL (provisioned):** costo predecible pero el costo
+  idle es alto para un proyecto en bootstrap.
+- **Aurora Serverless v2:** auto-scaling de ACU, pay-per-second; más
+  barato en idle pero el cold-start en la primera query es ~10s.
+- **DynamoDB:** no es PostgreSQL; cambiaría la shape del API
+  downstream.
+- **PlanetScale / Neon:** terceros; afuera del boundary de AWS donde
+  trabajamos por lo demás.
 
-## Decision
+## Decisión
 
-- **Engine:** Aurora Serverless v2 PostgreSQL 14+.
-- **Driver:** `pg` (node-postgres) for the connection pool, behind
-  `kysely` for typed query construction.
-- **Migrations:** `node-pg-migrate` v9 with
+- **Motor:** Aurora Serverless v2 PostgreSQL 14+.
+- **Driver:** `pg` (node-postgres) para el connection pool, detrás de
+  `kysely` para query construction tipado.
+- **Migraciones:** `node-pg-migrate` v9 con
   `migrationsTable: 'orion_migrations'`, `migrationsSchema: 'public'`,
-  Flyway-style names `V<version>__<name>.sql`, tracked in
+  nombres estilo Flyway `V<version>__<name>.sql`, tracked en
   `public.orion_migrations`.
-- **Per-context schema:** every bounded context owns its schema;
-  tables cross-reference with explicit FK constraints declared in the
-  later context's migrations (e.g. `census.homes.assigned_user_id` ->
-  `identity.users.id`).
-- **Transactional writes** (`db.transaction().execute(async trx => ...)`)
-  for multi-step writes in Phase 2+.
+- **Schema por contexto:** cada bounded context es dueño de su
+  schema; las tablas se cross-referencian con constraints FK
+  explícitas declaradas en las migrations del contexto posterior (ej.
+  `census.homes.assigned_user_id` -> `identity.users.id`).
+- **Escrituras transaccionales** (`db.transaction().execute(async trx
+  => ...)`) para escrituras multi-paso en Phase 2+.
 
-## Why Aurora Serverless v2 (not RDS provisioned)
+## Por qué Aurora Serverless v2 (no RDS provisioned)
 
-- Pay-per-second ACU aligns with the bootstrap's bursty traffic.
-- v2 has faster cold-start than v1 (the latter had a 30 s pause).
-- Shared with other AWS services via VPC peering, no external network.
+- Pay-per-second por ACU se alinea con el tráfico a ráfagas del
+  bootstrap.
+- v2 tiene cold-start más rápido que v1 (la última tenía una pausa
+  de 30s).
+- Compartido con otros servicios AWS vía VPC peering, sin red
+  externa.
 
-## Why kysely (not raw SQL or Prisma)
+## Por qué kysely (no raw SQL ni Prisma)
 
-- `kysely` is a typed query builder that holds the table interface as
-  a TS module (`Database` type). It returns plain rows, which keeps
-  handlers free of ORM-specific quirks.
-- No `prisma generate` step in CI; builds are pure `tsc -b`.
-- Migrating to a different store later means rewriting the
-  `Database` interface and the repository classes, NOT touching
-  handlers.
+- `kysely` es un typed query builder que mantiene la interfaz de las
+  tablas como un módulo TS (tipo `Database`). Devuelve filas planas,
+  lo que deja a los handlers libres de quirks específicos de un ORM.
+- No hay un step `prisma generate` en CI; los builds son puro
+  `tsc -b`.
+- Migrar a otro store más adelante significa reescribir la interfaz
+  `Database` y las clases repository, SIN tocar los handlers.
 
-## Why node-pg-migrate
+## Por qué node-pg-migrate
 
-- Plain-SQL migration files (no JS migration boilerplate to keep).
-- `--use-glob` (npm v9+) accepts `V*.sql` automatically.
-- Tracks applied migrations in a single table; roll-forward is
-  trivial, roll-back requires a deliberate
-  `migrate:down`.
+- Archivos de migración en SQL plano (sin boilerplate JS de
+  migration que mantener).
+- `--use-glob` (npm v9+) acepta `V*.sql` automáticamente.
+- Trackea las migraciones aplicadas en una sola tabla; roll-forward
+  es trivial, roll-back requiere un `migrate:down` deliberado.
 
-## Consequences
+## Consecuencias
 
-### Positive
+### Positivas
 
-- Cheapest reliable Postgres at low traffic.
-- Schema-per-context keeps the bounded contexts independent at the
-  database layer.
-- kysely + `pg` is fully synchronous-style for our simple repositories.
-- Migration history is plain SQL; reviewers see the change directly.
+- Postgres confiable más barato para tráfico bajo.
+- Schema por contexto mantiene los bounded contexts independientes
+  a nivel de base de datos.
+- kysely + `pg` es completamente estilo-síncrono para nuestros
+  repositories simples.
+- El historial de migraciones es SQL plano; los reviewers ven el
+  cambio directamente.
 
-### Negative
+### Negativas
 
-- Aurora v2 pauses on idle; first request after a long idle wait pays
-  the cold-start (~5-10 s). Acceptable for bootstrap traffic, will be
-  measured in Phase 2+ and may switch to a fixed-capacity Aurora if
-  it hurts UX.
-- node-pg-migrate doesn't do declarative diff (Prisma-style); we
-  accumulate `.sql` over time and prune old migrations when
-  convenient.
+- Aurora v2 pausa en idle; el primer request después de una espera
+  larga paga el cold-start (~5-10s). Aceptable para tráfico de
+  bootstrap, se medirá en Phase 2+ y se podrá cambiar a un Aurora
+  fixed-capacity si lastima la UX.
+- node-pg-migrate no hace diff declarativo (estilo Prisma);
+  acumulamos `.sql` con el tiempo y pruneamos las migraciones viejas
+  cuando conviene.

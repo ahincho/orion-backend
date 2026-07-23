@@ -1,49 +1,52 @@
 # 0001 - Runtime Node.js 24.x LTS (Krypton) + npm workspaces
 
-- Status: Accepted (2026-06-30, during repo bootstrap)
+- Estado: Aceptado (2026-06-30, durante el bootstrap del repo)
 - Deciders: @ahincho
 - Supersedes: -
 
-## Context and Problem Statement
+## Contexto y problema
 
-The runtime determines the Lambda tier available, the TypeScript version, the
-behavior of `node:crypto`, the ESM/CJS support, and the boundaries for npm
-workspaces. We need to pick a Node version that will be supported throughout
-the bootstrap phase and that matches the AWS Lambda runtime tier
-selection.
+El runtime determina el tier de Lambda disponible, la versión de
+TypeScript, el comportamiento de `node:crypto`, el soporte de ESM/CJS y
+las fronteras de los workspaces de npm. Necesitamos elegir una versión
+de Node que esté soportada durante toda la fase de bootstrap y que
+matchee con el tier de runtimes de AWS Lambda.
 
-## Decision
+## Decisión
 
-- **Runtime:** Node.js 24.x (LTS "Krypton"), supported on AWS Lambda
-  (current tier: `nodejs24.x`, EOL April 2028).
-- **Package manager:** npm with **workspaces** (multi-package). Three
-  workspaces: `@orion/shared`, `@orion/context-authorizer`,
-  `@orion/context-identity`, `@orion/context-census`. A root
-  `package.json` hoists dev-dependencies and scripts.
-- **Module format:** ESM (`"type": "module"`) at root and in each workspace.
-- **TypeScript:** 5.7 strict mode with `exactOptionalPropertyTypes` and
+- **Runtime:** Node.js 24.x (LTS "Krypton"), soportado en AWS Lambda
+  (tier actual: `nodejs24.x`, EOL abril 2028).
+- **Package manager:** npm con **workspaces** (multi-paquete). Workspaces:
+  `@orion/shared`, `@orion/context-authorizer`,
+  `@orion/context-identity`, `@orion/context-census`. Un `package.json`
+  raíz que hoistea dev-dependencies y scripts.
+- **Formato de módulos:** ESM (`"type": "module"`) en root y en cada
+  workspace.
+- **TypeScript:** 5.7 en modo strict con `exactOptionalPropertyTypes` y
   `noUncheckedIndexedAccess`.
 
-## Consequences
+## Consecuencias
 
-### Positive
+### Positivas
 
-- Stable for ~2 years (Krypton LTS schedule) so the bootstrap is not forced
-  to upgrade mid-sprint.
-- Built-in `node:crypto` includes scrypt, timingSafeEqual and `webcrypto`,
-  removing the need for `bcrypt`, `jose`, etc. on the encryption side.
-- npm workspaces keep the cross-package TypeScript walking cheap
-  (`tsc -b` once at root builds everything in dependency order).
-- ESM allows future migration to native ESM AWS Lambda without rewriting
-  handlers.
+- Estable por ~2 años (cronograma LTS Krypton) así el bootstrap no se
+  ve forzado a upgrade a mitad de sprint.
+- `node:crypto` built-in incluye scrypt, timingSafeEqual y
+  `webcrypto`, eliminando la necesidad de `bcrypt`, `jose`, etc. para
+  la parte de encripción.
+- npm workspaces mantienen barato el cross-package TypeScript walking
+  (`tsc -b` una vez en root construye todo en orden de dependencia).
+- ESM permite una migración futura a AWS Lambda con ESM nativo sin
+  reescribir handlers.
 
-### Negative
+### Negativas
 
-- Node 24 is not the LTS some teams are used to (18/20); we carry the cost
-  of any tooling churn that arrives first on 24 (Powertools, Middy,
-  aws-sdk v3 sometimes lag).
-- npm workspaces do not have a `verdaccio`-equivalent out of the box; we
-  rely on the public registry for transitive deps. Acceptable for a solo
-  bootstrap.
-- `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess` turn small
-  oversights into TS errors. Budgeted overhead for clarity.
+- Node 24 no es el LTS al que algunos equipos están acostumbrados
+  (18/20); cargamos el costo de cualquier churn de tooling que llegue
+  primero a 24 (Powertools, Middy, aws-sdk v3 a veces se atrasan).
+- npm workspaces no traen un equivalente de `verdaccio` out of the
+  box; dependemos del registry público para las transitive deps.
+  Aceptable para un bootstrap solo.
+- `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess` convierten
+  pequeños descuidos en errores de TS. Overhead presupuestado en favor
+  de la claridad.

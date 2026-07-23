@@ -1,67 +1,70 @@
-# 0006 - Middy v6 with a custom LambdaHandler base wrapper
+# 0006 - Middy v6 con un wrapper base LambdaHandler custom
 
-- Status: Accepted (2026-07-19, during PR #7 hardening)
+- Estado: Aceptado (2026-07-19, durante el hardening del PR #7)
 - Deciders: @ahincho
-- Supersedes: Middy v5 (which exposed `HandlerLambda`)
+- Supersedes: Middy v5 (que exponía `HandlerLambda`)
 
-## Context and Problem Statement
+## Contexto y problema
 
-`@middy/core` is the de-facto middleware framework for AWS Lambda in
-TypeScript. v6 changed the public type shape: the `HandlerLambda`
-generic alias that v5 exposed is gone, leaving `LambdaHandler` as the
-expected base. The bootstrap initially used v5 idioms (passing `Handler`
-+ extra context to `middy()`), which broke under `npm install` once
-v6 was resolved. We need a stable handler shape that:
+`@middy/core` es el framework de middleware de facto para AWS Lambda en
+TypeScript. v6 cambió el shape del tipo público: el alias genérico
+`HandlerLambda` que exponía v5 desapareció, dejando `LambdaHandler` como
+la base esperada. El bootstrap inicialmente usaba idioms de v5
+(pasando `Handler` + contexto extra a `middy()`), que se rompieron
+bajo `npm install` cuando se resolvió v6. Necesitamos un shape estable
+de handler que:
 
-- Survives the v5 -> v6 (and future) migration without churn in every
+- Sobreviva la migración de v5 -> v6 (y futuras) sin churn en cada
   bounded context.
-- Encodes our pipeline order:
+- Codifique el orden de nuestro pipeline:
   `header-normalize -> JSON-parse -> logger-inject -> X-Ray-capture ->
   auth-check -> CORS -> handler -> error-handler -> formatResponse`.
-- Allows each business Lambda to be a thin wrapper around an inner
-  closure that receives `(event, context, auth)`.
+- Permita que cada Lambda de negocio sea un wrapper delgado alrededor
+  de una inner closure que recibe `(event, context, auth)`.
 
-## Decision
+## Decisión
 
-We write a `buildHandler(config)` factory in `@orion/shared/templates`
-that:
+Escribimos una factory `buildHandler(config)` en `@orion/shared/templates`
+que:
 
-1. Returns a Lambda-compatible `Handler<...>` for AWS Lambda.
-2. Internally runs a `middy()` pipeline whose **last** middleware is a
-   custom `LambdaHandler`-shaped adapter (`Bridge` middleware) that
-   invokes a typed `useCase(event, auth)` closure.
-3. The useCase closure is the only thing each bounded context writes.
-4. The pipeline can be configured to add/remove CORS, auth check, or
-   logger-inject on a per-handler basis via a small config object.
+1. Devuelve un `Handler<...>` Lambda-compatible para AWS Lambda.
+2. Internamente corre un pipeline `middy()` cuyo último middleware es
+   un adaptador custom shapeado como `LambdaHandler` (middleware
+   `Bridge`) que invoca una closure tipada `useCase(event, auth)`.
+3. La closure `useCase` es lo único que cada bounded context escribe.
+4. El pipeline se puede configurar para sumar/quitar CORS, el auth
+   check o el logger-inject por handler vía un objeto de config chico.
 
-Because `middy/http-cors@6` only accepts `string | string[]` for its
-`getOrigin` parameter (sync), we resolve CORS dynamically on first
-invocation: we cache the SSM-resolved whitelist once inside the
-`buildHandler` closure (5-minute SSM cache lives in `@orion/shared`).
+Como `middy/http-cors@6` solo acepta `string | string[]` para su
+parámetro `getOrigin` (sync), resolvemos CORS dinámicamente en la
+primera invocación: cacheamos la whitelist resuelta desde SSM una sola
+vez dentro del closure de `buildHandler` (cache de SSM de 5 minutos
+vive en `@orion/shared`).
 
-## Why this shape
+## Por qué este shape
 
-- v6 of middy: the adapter middleware is the only stable surface we
-  depend on (it's middleware -> pipeline ordering, not generics).
-- One handler factory for the whole backend; each new bounded context
-  only writes the `useCase` closure, never the middy setup.
+- v6 de middy: el middleware adaptador es la única superficie
+  estable de la que dependemos (es middleware -> ordenamiento del
+  pipeline, no genéricos).
+- Una handler factory para todo el backend; cada nuevo bounded context
+  solo escribe la closure `useCase`, nunca el setup de middy.
 
-## Consequences
+## Consecuencias
 
-### Positive
+### Positivas
 
-- Future-proof: the day a v7 of middy ships, only `Bridge` needs to
-  adapt, not every Lambda.
-- CORS resolution becomes async but cached, removing the "string or
-  array only" constraint.
+- Future-proof: el día que salga una v7 de middy, solo `Bridge`
+  necesita adaptarse, no cada Lambda.
+- La resolución de CORS queda async pero cacheada, removiendo la
+  restricción de "solo string o array".
 - TypeScript strict mode (`exactOptionalPropertyTypes`,
-  `noUncheckedIndexedAccess`) catches mismatches at compile time.
+  `noUncheckedIndexedAccess`) captura mismatches en compile time.
 
-### Negative
+### Negativas
 
-- We carry a small dependency on a custom middleware that future
-  maintainers must learn (mitigated by `buildHandler.test.ts` + the
-  README in `@orion/shared`).
-- The wrapper is opinionated; we cannot drop in a third-party middy
-  pattern without re-wrapping. Documented as a constraint in
-  `@orion/shared/README.md`.
+- Cargamos una pequeña dependencia sobre un middleware custom que
+  futuros mantenedores deben aprender (mitigado por
+  `buildHandler.test.ts` + el README en `@orion/shared`).
+- El wrapper es opinionado; no podemos hacer drop-in con un patrón de
+  terceros de middy sin re-envolverlo. Documentado como constraint
+  en `@orion/shared/README.md`.
